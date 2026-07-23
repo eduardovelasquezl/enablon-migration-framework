@@ -1,0 +1,183 @@
+# Catálogo de mappings de entidad — Bloque3_Mappings_Entidades/
+#
+# Documental, no ejecutable. Cubre los 2 workbooks de
+# inputs/_incoming_claude_web/Bloque3_Mappings_Entidades/. No se asume que
+# una coincidencia por descripción sea un mapping aprobado — donde el
+# workbook marca explícitamente "No migra"/"NO MIGRA", se respeta como
+# decisión funcional ya tomada, no como ausencia de evidencia.
+
+catalog_version: "1.0"
+
+entity_mappings:
+
+  - mapping_id: "entity_mapping:gct_uorg.exportacion_eje"
+    workbook_id: "etl_workbook:entity.gct_uorg_match"
+    sheet_id: "entity_sheet:gct_uorg.exportacion_eje"
+    related_module: "moc"
+    related_migration_object: "moc.Change_Register"
+    source_entity: "Estructura GCT (Niveles/Plantas/Fabricas/Unidades, sistema idcentro_map_gct)"
+    source_fields: ["Parent", "Code"]
+    source_values: []
+    target_entity: "First Axis Enablon (árbol de entidades)"
+    target_fields: ["ruta", "EntityEN", "EntityFR", "EntityES", "Order", "EntityStatus", "Input", "CS_BottomForKids", "Id"]
+    target_values: []
+    composite_key: ["Parent", "Code"]
+    mapping_scope: entity
+    decision_type: direct_mapping
+    mapping_status: mapped
+    confidence: high
+    evidence_status: validated
+    limitations:
+      - "1722 filas (fórmula ruta=IF(Parent='<Top>',Code,CONCAT(Parent,'>',Code))) — casi idéntico en recuento a inputs/entity_catalog/First_Axis_export_bruto.csv (1724 filas incl. cabecera) — MISMA fuente, no una copia independiente."
+      - "No se ha verificado columna a columna que este export sea posterior o anterior al usado para el catálogo resuelto ya validado (catalogo_resuelto_code_ruta_site.csv) — orden temporal pending_confirmation."
+    open_question_ids: []
+
+  - mapping_id: "entity_mapping:gct_uorg.niveles_lookup_chain"
+    workbook_id: "etl_workbook:entity.gct_uorg_match"
+    sheet_id: "entity_sheet:gct_uorg.niveles"
+    related_module: "moc"
+    related_migration_object: "moc.Change_Register"
+    source_entity: "IdCentro/IdFabrica/IdPlanta/IdUnidad (GCT)"
+    source_fields: ["Centro", "Código Centro", "IdCentro", "Fábrica", "Código Fábrica", "IdFabrica", "Planta", "IdPlanta", "Código Planta", "Unidad", "IdUnidad", "Código Unidad"]
+    source_values: []
+    target_entity: "Código Enablon compuesto (concatenación jerárquica)"
+    target_fields: ["Código Planta (=CONCAT(IdFabrica_code,'.',Planta_code))", "Código Unidad (=CONCAT(IdUnidad,'.',IdPlanta_code))"]
+    target_values: []
+    composite_key: ["IdCentro", "IdFabrica", "IdPlanta", "IdUnidad"]
+    mapping_scope: entity
+    decision_type: transformed_mapping
+    mapping_status: mapped
+    confidence: high
+    evidence_status: partially_reviewed
+    limitations:
+      - "392 filas. Encadena XLOOKUP entre 4 hojas del mismo workbook (Niveles→Plantas→Unidades) — un lookup roto en cualquier hoja intermedia propagaría 'NULL' silenciosamente al resultado final, como ya se observa en varias filas de muestra (columna Código Unidad = 'NULL.NULL')."
+      - "No se ha determinado si 'NULL.NULL' es un resultado esperado (unidad sin código) o un lookup fallido — pending_confirmation."
+    open_question_ids: ["OQ-ENT-01"]
+
+  - mapping_id: "entity_mapping:itp_primer_eje.mapeo_eje_final_modificado"
+    workbook_id: "etl_workbook:entity.itp_primer_eje"
+    sheet_id: "entity_sheet:itp_primer_eje.mapeo_eje_final_modificado"
+    related_module: null
+    related_migration_object: null
+    source_entity: "IDCentro/IDUnidadOrg (sistema ITP, vía hoja oculta 'Centros-empresas-departamentos-')"
+    source_fields: ["Uorg", "Centro", "DPTO", "Empresa"]
+    source_values: []
+    target_entity: "First Axis Enablon (árbol de entidades, todos los módulos ITP)"
+    target_fields: ["EjeCompleto-rutafiltrada", "Matriz", "Nivel", "Referencia", "Nombre [EN]", "Nombre [ES]", "Orden", "Estado", "Entrada", "Bottom for kids"]
+    target_values: []
+    composite_key: ["Uorg (resuelto vía IDUnidadOrg)"]
+    mapping_scope: entity
+    decision_type: transformed_mapping
+    mapping_status: mapped
+    confidence: high
+    evidence_status: partially_reviewed
+    limitations:
+      - "1696 filas. Es la hoja de mapeo de entidad MÁS CONSOLIDADA encontrada en Bloque3 — encadena XLOOKUP contra una hoja OCULTA ('Centros-empresas-departamentos-', 6154 filas) y contra la propia hoja 'MAPEOFINAL' del mismo workbook (no leída en detalle en este incremento)."
+      - "No se ha confirmado si esta hoja es la versión final realmente usada para producir inputs/entity_catalog/catalogo_resuelto_code_ruta_site.csv, o una versión de trabajo anterior — el nombre del archivo ('version 4') sugiere revisiones previas sin diff documentado."
+    open_question_ids: ["OQ-ENT-02"]
+
+  - mapping_id: "entity_mapping:itp_primer_eje.eje_final_2"
+    workbook_id: "etl_workbook:entity.itp_primer_eje"
+    sheet_id: "entity_sheet:itp_primer_eje.eje_final_2"
+    related_module: null
+    related_migration_object: null
+    source_entity: "Salida de 'Mapeo Eje final-modificado' (mismo workbook)"
+    source_fields: ["Parent", "Code"]
+    source_values: []
+    target_entity: "First Axis Enablon (formato de exportación final, 5 idiomas)"
+    target_fields: ["ruta", "EntityEN", "EntityFR", "EntityES", "EntityZH", "EntityBR", "Order", "EntityStatus", "Input", "CS_BottomForKids", "OrgaTimeZone", "Address"]
+    target_values: []
+    composite_key: ["Parent", "Code"]
+    mapping_scope: entity
+    decision_type: direct_mapping
+    mapping_status: mapped
+    confidence: high
+    evidence_status: partially_reviewed
+    limitations:
+      - "3038 filas, con las 5 columnas de idioma completas (a diferencia de 'Exportación eje' del workbook GCT, que solo tenía 3: EN/FR/ES) — candidato más completo a formato de exportación final del eje ITP, no confirmado como el realmente cargado."
+    open_question_ids: ["OQ-ENT-02"]
+
+  - mapping_id: "entity_mapping:itp_primer_eje.sites_no_migra"
+    workbook_id: "etl_workbook:entity.itp_primer_eje"
+    sheet_id: "entity_sheet:itp_primer_eje.per_site_sheets"
+    related_module: null
+    related_migration_object: null
+    source_entity: "IDCentro/IDUnidadOrg por site (hojas 'Estructura', 'C&CE', 'Madrid Corporación', 'MCPF', 'MCSH', 'MCPM', 'M&NC', 'Site Canarias', 'PESR', 'PELR')"
+    source_fields: ["IDCentro", "IDUnidadOrg", "Unidad Organizativa"]
+    source_values: []
+    target_entity: "First Axis Enablon / decisión de no-migración"
+    target_fields: ["Propuesta de mapeo"]
+    target_values: ["No migra", "NO MIGRA"]
+    composite_key: ["IDCentro", "IDUnidadOrg"]
+    mapping_scope: entity
+    decision_type: do_not_migrate
+    mapping_status: do_not_migrate
+    confidence: high
+    evidence_status: validated
+    limitations:
+      - "Múltiples unidades organizativas por site están marcadas explícitamente 'No migra'/'NO MIGRA' en columna dedicada ('Propuesta de mapeo' o 'Descripción Unidad') — esto es una DECISIÓN FUNCIONAL YA DOCUMENTADA, no una ausencia de mapeo. Ejemplos observados: hoja 'Estructura' (unidades de Colombia/Perú bajo CEPSA EP), hoja 'C&CE' (todas las unidades de GASIB), hoja 'Madrid Corporación' (varias delegaciones)."
+      - "No se ha contado cuántas filas totales están marcadas 'No migra' frente al total — sería necesario para una especificación de exportación real, fuera de alcance de este incremento."
+    open_question_ids: []
+
+  - mapping_id: "entity_mapping:itp_primer_eje.site_canarias_manual_note"
+    workbook_id: "etl_workbook:entity.itp_primer_eje"
+    sheet_id: "entity_sheet:itp_primer_eje.site_canarias"
+    related_module: null
+    related_migration_object: null
+    source_entity: "Ref. Tenerife (IDCentro=3)"
+    source_fields: ["IDCentro", "IDUnidadOrg"]
+    source_values: []
+    target_entity: "First Axis Enablon (Site Canarias > Operaciones Tenerife)"
+    target_fields: ["Propuesta de mapeo"]
+    target_values: []
+    composite_key: ["IDCentro=3"]
+    mapping_scope: relationship
+    decision_type: transformed_mapping
+    mapping_status: pending_mapping
+    confidence: medium
+    evidence_status: identified
+    limitations:
+      - "La columna 'Propuesta de mapeo' contiene, para todas las filas de Ref. Tenerife muestreadas, la MISMA instrucción textual larga ('Crear L5 dentro de SITE CANARIAS > OPERACIONES TENERIFE que sea RT HÍSTICO...') — es una instrucción de mapeo en lenguaje natural para ejecución manual futura, NO un valor de entidad ya resuelto. Se clasifica pending_mapping, no mapped, precisamente para no confundir una instrucción con una decisión ya aplicada."
+    open_question_ids: ["OQ-ENT-03"]
+
+  - mapping_id: "entity_mapping:itp_primer_eje.mcpm_split_note"
+    workbook_id: "etl_workbook:entity.itp_primer_eje"
+    sheet_id: "entity_sheet:itp_primer_eje.mcpm"
+    related_module: null
+    related_migration_object: null
+    source_entity: "CQ-Puente Mayorga (IDCentro=9)"
+    source_fields: ["IDCentro", "IDDepartamento", "IDUnidadOrg"]
+    source_values: []
+    target_entity: "First Axis Enablon (MCPM, división en 2 centros L4)"
+    target_fields: ["ENABLON Mapeo 1er Eje (Col. H)"]
+    target_values: []
+    composite_key: ["IDCentro=9"]
+    mapping_scope: relationship
+    decision_type: unresolved
+    mapping_status: pending_mapping
+    confidence: medium
+    evidence_status: identified
+    limitations:
+      - "Comentario textual: 'Dentro del centro L3 – Unidad de Gestión MCPM - MC Puente Mayorga hay que dividir dos centros L4' — decisión de re-estructuración de jerarquía documentada como pendiente de ejecutar, no como ya aplicada. La columna de mapeo final (Col. H referenciada) aparece vacía en las filas muestreadas."
+    open_question_ids: ["OQ-ENT-03"]
+
+  - mapping_id: "entity_mapping:itp_primer_eje.mcsh_shanghai_bilingual"
+    workbook_id: "etl_workbook:entity.itp_primer_eje"
+    sheet_id: "entity_sheet:itp_primer_eje.mcsh"
+    related_module: null
+    related_migration_object: null
+    source_entity: "CQ-SHANGHAI (IDCentro=21)"
+    source_fields: ["IDCentro", "IDUnidadOrg"]
+    source_values: []
+    target_entity: "First Axis Enablon (rama CEPSA.QM.09.*)"
+    target_fields: ["ENABLON Mapeo 1st Axis", "ENABLON New 1st Axis"]
+    target_values: ["HISTORIC", "No migra"]
+    composite_key: ["IDUnidadOrg"]
+    mapping_scope: entity
+    decision_type: do_not_migrate
+    mapping_status: do_not_migrate
+    confidence: high
+    evidence_status: validated
+    limitations:
+      - "Único sitio con nombres bilingües español/mandarín observados directamente en las columnas de origen (p. ej. 'Quality & Innovation质量与创新') — mayoría de unidades marcadas 'No migra', una marcada 'HISTORIC' con código de destino asignado (CEPSA.QM.09)."
+    open_question_ids: []

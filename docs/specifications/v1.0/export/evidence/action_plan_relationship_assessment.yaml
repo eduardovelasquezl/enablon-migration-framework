@@ -1,0 +1,189 @@
+# Evaluación cuantitativa de relaciones de Action Plans
+#
+# Documental, no ejecutable. Calculado sobre el CSV real
+# inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Action Plans-20072026-41.csv
+# (31444 filas de datos, tab-delimited UTF-16LE) mediante lectura directa en
+# modo solo lectura — ningún identificador histórico completo se reproduce
+# aquí; todos los ejemplos usan hash SHA-256 truncado a 10 caracteres. No se
+# ha modificado ningún archivo, ni implementado is_legitimate_grouping()
+# como función ejecutable — esto es una evaluación documental equivalente.
+#
+# Metodología de "padre": clave compuesta (CS_HistoricalDataOrigin,
+# CS_HistoricalOriginID) — NO solo CS_HistoricalOriginID — para no repetir
+# el mismo punto ciego de origen (Hallazgo #1) en esta agregación.
+
+catalog_version: "1.0"
+
+summary:
+  total_actions: 31444
+  actions_with_action_id: 31384              # CS_HistoricalAPID no vacío
+  actions_with_action_id_pct: 99.81
+  unique_action_ids_global: 29602             # valores CS_HistoricalAPID distintos (no vacíos)
+  duplicated_action_id_values: 1679           # valores de APID que aparecen >1 vez
+  duplicated_action_id_rows_affected: 3461
+  actions_with_parent_id: 31443               # CS_HistoricalOriginID no vacío
+  actions_with_parent_id_pct: 99.997
+  distinct_parent_ids_naive: 11906            # agrupando solo por CS_HistoricalOriginID (metodo original de config/modules.yaml)
+  distinct_parent_ids_compound: 11920         # agrupando por (source_system, CS_HistoricalOriginID)
+  candidate_legitimate_grouping_percentage: 76.17   # filas en grupos >1 accion con APID todos distintos, sobre el total
+  duplicate_action_candidate_percentage: 1.10       # filas con APID duplicado DENTRO del mismo padre
+  cross_system_collision_apid_count: 1437           # valores de APID que aparecen bajo mas de un source_system
+  standalone_percentage_of_parents: 55.35           # % de PADRES (no de filas) con 1 sola accion
+  unresolved_percentage: 0.003                      # filas sin CS_HistoricalOriginID (1 de 31444)
+  empty_action_id_percentage: 0.19                  # filas sin CS_HistoricalAPID (60 de 31444)
+  link_fields_populated_pct:
+    BCCrisis: 3.21
+    CS_Drills: 0.03
+    CS_IndManualOPS: 5.84
+    CS_IndependentManualEvents: 0.05
+    CS_Meetings: 0.65
+    MoCChange: 0.06
+    CS_IP: 0.47
+
+parent_distribution:
+  actions_per_parent_1: 6598
+  actions_per_parent_2: 2435
+  actions_per_parent_3_5: 1995
+  actions_per_parent_6_10: 554
+  actions_per_parent_gt10: 338
+  max_actions_single_parent: 179
+  max_actions_single_parent_source_system: "Prevención.ITP_ACCIONES_CORRECTORAS"
+
+sixty_three_percent_finding:
+  original_figure_pct: 63
+  original_methodology_inferred: "naive: 1 - (OriginID distintos / total filas) = redundancia, no proporcion de filas en grupos compartidos"
+  recomputed_naive_pct: 62.14
+  recomputed_compound_pct: 62.09
+  interpretation: >
+    El '63%' NO significa 'el 63% de las filas comparten padre con otra' —
+    esa proporcion real es 79.01% de las filas (24845 de 31444) en grupos
+    con mas de 1 accion. El '63%' es la proporcion de filas 'excedentes' por
+    encima de una representante por padre: (filas_en_grupos_compartidos -
+    numero_de_grupos_compartidos) / total. Recalculado con clave compuesta
+    (sistema+OriginID) el resultado es casi identico (62.09% vs 62.14%
+    naive) — la distincion de sistema origen APENAS cambia esta metrica
+    concreta, a diferencia de lo que ocurre con la unicidad de
+    CS_HistoricalAPID (ver cross_system_collision_apid_count).
+  classification_of_63pct:
+    legitimate_grouping_candidate_share: "mayoritario — 5227 de 5322 grupos compartidos (98.2%) tienen todos los APID distintos dentro del grupo"
+    conflicting_or_duplicate_share: "minoritario — 95 de 5322 grupos compartidos (1.8%) tienen APID repetido dentro del mismo padre"
+    unresolved_share: "no aplica a este calculo (solo 1 fila sin OriginID en todo el dataset)"
+    standalone_share: "no aplica — el 63% se calcula solo sobre grupos compartidos por definicion"
+  conclusion: >
+    El 63% (y su cifra hermana, el 79% de filas en agrupacion compartida)
+    corresponde MAYORITARIAMENTE a agrupacion legitima uno-a-muchos (varias
+    acciones distintas por un mismo registro padre), consistente con el
+    patron ya observado directamente en ITP_SIM_ACCIONES_CORRECTORAS
+    (multiples IDAccionCorrectora para el mismo IDSimulacro, una fila por
+    fase). No se declara "validado" en sentido pleno porque esta
+    conclusion se apoya en consistencia estadistica + un mecanismo
+    estructural observado (CS_HistoricalAPID separado de
+    CS_HistoricalOriginID), no en una confirmacion funcional explicita del
+    cliente linea a linea.
+
+methodology_limitations:
+  - "CS_HistoricalDataOrigin solo distingue 2 valores (Prevención.ITP_ACCIONES_CORRECTORAS, GCT.CT_ACCIONES) — no permite desglosar por sub-modulo real (idorigenac: eventos_antiguos, simulacros, ops, etc.), ese desglose solo existe en el SQL/ETL de origen, no en el CSV final."
+  - "'Action Plans con padre no resoluble' (item 10 de la tarea) no puede cuantificarse desde este CSV: se localizo evidencia de un mensaje de fallo literal ('No se encuentra evento nuevo con ID hist: En eventos de enablon') en una hoja INTERMEDIA del ETL (CSV_AP_EVT_NEW_SPEC), pero ese literal NO aparece en ninguna fila del CSV final entregado (0 de 31444) — sugiere que los casos de fallo se filtraron o corrigieron antes de la entrega final, pero no permite contar cuantos hubo."
+  - "No existe en el CSV final ningun campo que indique 'do_not_migrate'/excluido — por definicion, un registro excluido nunca aparece en un export ya cargado; esta categoria no es medible desde este archivo."
+  - "El calculo se hizo sobre una unica pasada de lectura, sin cruzar contra los datos de origen SQL/ETL — la clasificacion 'legitimate_one_to_many_candidate' es un CANDIDATO estructural, no una validacion funcional aprobada por el cliente."
+
+groups:
+
+  - group_id: "apgroup:standalone.de8949aeb8"
+    source_system: "Prevención.ITP_ACCIONES_CORRECTORAS"
+    source_module: "no determinable desde el CSV (ver methodology_limitations)"
+    parent_identifier_hash: "de8949aeb8"
+    action_count: 1
+    unique_action_id_count: 1
+    relationship_types: ["standalone_action_plan (candidato)"]
+    classification: standalone_action_candidate
+    confidence: high
+    anomaly_types: []
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations: ["Representa 6598 grupos similares (55.35% de todos los padres)."]
+
+  - group_id: "apgroup:legitimate.2bf90bdd7e"
+    source_system: "Prevención.ITP_ACCIONES_CORRECTORAS"
+    source_module: "no determinable desde el CSV"
+    parent_identifier_hash: "2bf90bdd7e"
+    action_count: 2
+    unique_action_id_count: 2
+    relationship_types: ["linked_action_plan (candidato, mismo padre)"]
+    classification: legitimate_one_to_many_candidate
+    confidence: medium
+    anomaly_types: []
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations: ["Representa el patron mas comun de grupo compartido (2435 grupos de tamaño 2, 20.43% de los padres)."]
+
+  - group_id: "apgroup:legitimate.max179.23269dacd4"
+    source_system: "Prevención.ITP_ACCIONES_CORRECTORAS"
+    source_module: "no determinable desde el CSV"
+    parent_identifier_hash: "23269dacd4"
+    action_count: 179
+    unique_action_id_count: 179
+    relationship_types: ["linked_action_plan (candidato, mismo padre)"]
+    classification: legitimate_one_to_many_candidate
+    confidence: low
+    anomaly_types: ["volumen_atipico"]
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations:
+      - "El grupo con MAS acciones de todo el dataset (179). Todos los CS_HistoricalAPID son distintos, cumpliendo el criterio tecnico de legitimate_one_to_many_candidate, pero un volumen tan alto para un solo padre no se ha podido contrastar con el origen (podria ser un plan de accion de largo plazo con muchas subacciones reales, o un indicio de agrupacion incorrecta) — confianza baja precisamente por el volumen atipico, no por evidencia de conflicto."
+    open_question_ids: ["OQ-AP-04"]
+
+  - group_id: "apgroup:duplicate.23be948675"
+    source_system: "GCT.CT_ACCIONES"
+    source_module: "no determinable desde el CSV"
+    parent_identifier_hash: "23be948675"
+    action_count: 10
+    unique_action_id_count: 5
+    relationship_types: ["unknown — posible duplicado de fila"]
+    classification: duplicate_action_candidate
+    confidence: medium
+    anomaly_types: ["apid_repetido_en_mismo_padre"]
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations: ["10 filas, solo 5 CS_HistoricalAPID distintos — cada APID aparece exactamente 2 veces dentro de este mismo padre."]
+    open_question_ids: ["OQ-AP-05"]
+
+  - group_id: "apgroup:duplicate.81e2ba25e5"
+    source_system: "GCT.CT_ACCIONES"
+    source_module: "no determinable desde el CSV"
+    parent_identifier_hash: "81e2ba25e5"
+    action_count: 50
+    unique_action_id_count: 25
+    relationship_types: ["unknown — posible duplicado de fila"]
+    classification: duplicate_action_candidate
+    confidence: medium
+    anomaly_types: ["apid_repetido_en_mismo_padre", "patron_exactamente_2x"]
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations:
+      - "50 filas, 25 APID distintos — CADA accion aparece EXACTAMENTE 2 veces. Patron demasiado regular para ser casual; sugiere una causa sistematica (p. ej. un JOIN que duplica, o creacion+actualizacion contadas ambas como fila final) en vez de errores de captura aislados. Todos los grupos duplicate_action_candidate de la muestra provienen de GCT.CT_ACCIONES, ninguno de Prevención — patron a confirmar con mas casos."
+    open_question_ids: ["OQ-AP-05"]
+
+  - group_id: "apgroup:cross_system_collision.bd3a797ba9"
+    source_system: "GCT.CT_ACCIONES + Prevención.ITP_ACCIONES_CORRECTORAS"
+    source_module: "no determinable desde el CSV"
+    parent_identifier_hash: "bd3a797ba9"
+    action_count: 2
+    unique_action_id_count: 1
+    relationship_types: ["cross_system_collision"]
+    classification: cross_system_collision_candidate
+    confidence: high
+    anomaly_types: ["mismo_apid_distinto_sistema"]
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations:
+      - "Representa 1437 valores de CS_HistoricalAPID que aparecen bajo AMBOS sistemas origen (GCT y Prevención) — es decir, el mismo valor numerico de APID fue asignado independientemente en dos sistemas distintos SIN un prefijo que los distinga. Esto es un HALLAZGO NUEVO de este incremento, distinto de la duplicacion de CS_HistoricalOriginID ya conocida — afecta la IDENTIDAD (APID), no la referencia al padre (OriginID)."
+      - "No se ha confirmado si Enablon trata estos como registros distintos correctamente (porque probablemente el campo Id interno de Enablon, no CS_HistoricalAPID, es la clave real de unicidad) o si existe riesgo de colision funcional."
+    open_question_ids: ["OQ-AP-06"]
+
+  - group_id: "apgroup:unresolved.single_missing_originid"
+    source_system: "no determinable (1 fila unica)"
+    source_module: "no determinable"
+    parent_identifier_hash: "n/a — fila unica sin CS_HistoricalOriginID"
+    action_count: 1
+    unique_action_id_count: 1
+    relationship_types: ["unresolved_parent"]
+    classification: unresolved_parent
+    confidence: high
+    anomaly_types: ["campo_padre_vacio"]
+    evidence_ids: ["evidence:csv_enablon.action_plans"]
+    limitations: ["Exactamente 1 fila de 31444 no tiene CS_HistoricalOriginID — caso aislado, no un patron."]

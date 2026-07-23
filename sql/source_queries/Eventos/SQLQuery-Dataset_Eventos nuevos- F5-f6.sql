@@ -1,0 +1,6 @@
+SELECT        ITP_INFORME_INV2.IDEvento, ITP_INFORME_INV2_FASE5.IDInfFase5, ITP_INFORME_INV2_FASE5.IDInformeInv, ITP_INFORME_INV2_FASE5.LeccionAprendida, 
+                         ITP_INFORME_INV2_FASE5.FechaEnvioFase AS FechaEnvioFase5, ITP_INFORME_INV2_FASE5.IDEstado as IDEstado_f5, ITP_INFORME_INV2_FASE6.IDInfFase6, ITP_INFORME_INV2_FASE6.IDEstado AS Estado_f6, 
+                         ITP_INFORME_INV2_FASE6.FechaEnvioFase AS FechaEnvioFase6, ITP_INFORME_INV2_FASE6.ImplantacionEficaz, ITP_INFORME_INV2_FASE6.Motivo
+FROM            ITP_INFORME_INV2 full JOIN
+                         ITP_INFORME_INV2_FASE5 ON ITP_INFORME_INV2.IDInformeInv = ITP_INFORME_INV2_FASE5.IDInformeInv full JOIN
+                         ITP_INFORME_INV2_FASE6 ON ITP_INFORME_INV2.IDInformeInv = ITP_INFORME_INV2_FASE6.IDInformeInv

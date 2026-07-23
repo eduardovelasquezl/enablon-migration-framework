@@ -1,0 +1,25 @@
+# Rutas y parámetros generales del proyecto — no específicos de ningún
+# módulo ni de ninguna conexión SQL.
+# Ver databases.yaml para conexiones y modules.yaml para el registro de
+# módulos. Este archivo NUNCA debe contener secretos (host, usuario,
+# contraseña, tokens) — esos siempre van en variables de entorno (.env).
+
+folders:
+  inputs: inputs
+  outputs: outputs
+  sql_source_queries: sql/source_queries
+  sql_diagnostics: sql/diagnostics
+  sql_generated: sql/generated
+  entity_catalog: inputs/entity_catalog
+  csv_enablon: inputs/csv_enablon
+  incidents: inputs/incidents
+  etl_originals: inputs/etl
+  mappings: inputs/mappings
+  reports: outputs/reports
+  logs: logs
+  config: config
+
+general:
+  project_name: "Migración Histórica a Enablon"
+  default_encoding: "utf-8-sig"
+  default_date_format: "%d/%m/%Y"

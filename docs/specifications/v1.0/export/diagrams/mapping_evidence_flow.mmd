@@ -1,0 +1,31 @@
+flowchart TD
+    ZIP["9 ZIP\nBloque2_Mappings_SQL_ENA/"]
+    INTEG["Test de integridad\n(ZipFile.testzip — 0 errores CRC)"]
+    TRAV["Chequeo path traversal\n(0 riesgos en 9 ZIP + 1 anidado)"]
+    EXTRACT["Extracción segura\n(carpeta aislada fuera del repo,\nnombres originales preservados)"]
+    HASH["Hash SHA-256 por archivo\n+ comparación byte a byte"]
+
+    ZIP --> INTEG --> TRAV --> EXTRACT --> HASH
+
+    HASH -->|"34/34 coinciden"| DUP["Duplicado exacto de\nsql/source_queries/\n(source_sql, ya catalogado)"]
+    HASH -->|"1 entrada .zip"| NESTED["ZIP anidado detectado\n(Simulacros.zip -> SM.zip)"]
+
+    NESTED --> NESTEDHASH["Hash del ZIP anidado completo"]
+    NESTEDHASH -->|"idéntico a Reunionesdegrupo.zip"| ANOMALY["Anomalía de packaging\n(evidence_status: conflicting)"]
+
+    DUP --> SEARCH["Búsqueda de patrón de mapping\n(DatoOrigen/DatoDestino/CS_*/Enablon)"]
+    SEARCH -->|"0 coincidencias en 46 archivos"| NOMAP["mapping_catalog.yaml:\nevidence_status = validated\n(validado que NO es mapping)"]
+
+    NOMAP --> DOWNGRADE["mapping_status de los objetos afectados\nno mejora respecto al incremento anterior"]
+    ANOMALY --> OQ["Nueva pregunta abierta\n(OQ-GLOBAL-06)"]
+
+    classDef neutral fill:#616161,color:#ffffff,stroke:#3a3a3a;
+    classDef found fill:#1565c0,color:#ffffff,stroke:#0d3c78;
+    classDef negative fill:#c62828,color:#ffffff,stroke:#8e0000;
+    classDef anomaly fill:#ef6c00,color:#ffffff,stroke:#a34c00;
+
+    class ZIP,INTEG,TRAV,EXTRACT,HASH neutral
+    class DUP found
+    class NESTED,NESTEDHASH,ANOMALY,OQ anomaly
+    class SEARCH neutral
+    class NOMAP,DOWNGRADE negative

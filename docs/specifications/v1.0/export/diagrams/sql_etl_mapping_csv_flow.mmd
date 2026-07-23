@@ -1,0 +1,27 @@
+flowchart LR
+    SQL["SQL origen\nDB_OrigenSim / ITP_SIMULACRO\n(sql/source_queries/Simulacros/)"]
+    ETLSRC["Hoja ETL fuente\n(Power Query, sin JOIN)"]
+    MAP["Hoja de mapeo de campo\nMapeoSims (XLOOKUP G:H)\npatrón CampoOrigen\\|Field Destiny XML\\|..."]
+    RULE["Reglas nombradas\ntitlefix / cloneorigin / nullcontrol\nlookup 2 pasos / concat"]
+    ENT["Mapeo de entidad\n(Bloque3 - NO resuelto dentro\nde MapeoSims, trace_status=missing)"]
+    OUT1["Hoja de salida ETL\nCSV_SIM / CSV_SIM_full /\nCSV_Generated_BCM_SIM\n(3 fórmulas distintas para 'Reference')"]
+    CSVREAL["CSV real de Enablon\nDrills-22072026-41.csv\n(export, NO template validado)"]
+    ENABLON["Campo Enablon\n(candidato, no confirmado como\nimportable sin template)"]
+
+    SQL --> ETLSRC --> MAP
+    MAP --> RULE
+    MAP -.->|"IDCentro sin destino\nen esta hoja"| ENT
+    RULE --> OUT1
+    ENT -.->|"enlace no confirmado"| OUT1
+    OUT1 --> CSVREAL
+    CSVREAL -->|"trace_status:\nfully_traced (mayoría de campos)"| ENABLON
+    OUT1 -.->|"trace_status:\nambiguous (Reference)\nmissing (entidad)"| ENABLON
+
+    classDef confirmed fill:#2e7d32,color:#ffffff,stroke:#1b5e20;
+    classDef partial fill:#ef6c00,color:#ffffff,stroke:#a34c00;
+    classDef missing fill:#c62828,color:#ffffff,stroke:#8e0000;
+    classDef neutral fill:#616161,color:#ffffff,stroke:#3a3a3a;
+
+    class SQL,ETLSRC,MAP,RULE confirmed
+    class OUT1,CSVREAL partial
+    class ENT,ENABLON missing

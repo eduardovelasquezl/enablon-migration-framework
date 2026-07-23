@@ -1,0 +1,1739 @@
+# Catálogo de evidencias — Export Specifications v1.0
+#
+# Documental en este incremento (no se consume todavía por ningún motor).
+# Todo evidence_id es determinista: se deriva de la ruta del artefacto, nunca
+# de un contador arbitrario. No contiene secretos, contraseñas, cadenas de
+# conexión ni datos personales — donde el artefacto original sí los contiene
+# (ver `limitations`), el catálogo referencia el archivo sin citar su contenido.
+#
+# Taxonomía de evidence_type: enablon_template | validated_output_csv |
+#   source_sql | etl_definition | mapping_definition | enablon_configuration |
+#   official_documentation | approved_functional_decision | client_rule |
+#   automated_test | architecture_documentation | unknown
+#
+# Estados: identified | partially_reviewed | validated | conflicting |
+#   obsolete | evidence_pending
+# Confianza: high | medium | low | unknown
+
+catalog_version: "1.0"
+
+evidence:
+
+  # ---------------------------------------------------------------------
+  # Documentación de arquitectura (Architecture v1.0)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:architecture.readme_v1_0"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/README.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Referencia oficial de Architecture v1.0. Define capas (Input Layer →
+      Knowledge Engine → Export Engine [no implementado] → Deliverables),
+      cuatro conceptos de versionado, y los cuatro estados de todo elemento
+      documentado (Implemented / Approved Design / Planned / Out of Scope).
+    confidence: high
+    status: validated
+    export_relevance: >
+      Marco de referencia obligatorio para Specifications v1.0 — toda
+      especificación de exportación debe respetar esta separación de capas.
+    limitations: []
+
+  - evidence_id: "evidence:architecture.analysis_engine"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/analysis_engine.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Documenta los seis componentes Implemented del Knowledge Engine
+      (query_analyzer, schema_analyzer, mapping_resolver, mapping_coverage,
+      module_analysis, project_analysis) y sus contratos "qué hace / qué no
+      hace" — confirmados línea por línea contra el código real.
+    confidence: high
+    status: validated
+    export_relevance: >
+      Los contratos aquí descritos (p. ej. module_analysis.py nunca produce
+      ready_for_final_load ni CSV) acotan qué puede y no puede asumir una
+      futura especificación de exportación.
+    limitations: []
+
+  - evidence_id: "evidence:architecture.domain_model"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/domain_model.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Explica el modelo de dominio de src/knowledge_base/model.py: las tres
+      capas (Catálogo/Relaciones/Evidencia), MigrationObject,
+      MappingDecision vs MappingCoverageFinding, CrossModuleActionPlanBuffer.
+    confidence: high
+    status: validated
+    export_relevance: >
+      MigrationObject es la unidad granular sobre la que se construirá el
+      inventario de la Tarea 2 — este documento es su fuente conceptual.
+    limitations: []
+
+  - evidence_id: "evidence:architecture.export_engine"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/export_engine.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Diseño APROBADO, NO implementado, del Export Engine (ExportPlan,
+      ExportDefinition, CSV Generator, CSV Writer, CSV Validator,
+      ExportPackage, Manifest). Establece explícitamente que generar CSV sin
+      un template de importación validado por el cliente "sería inventar un
+      formato". Confirmado por grep: cero ocurrencias de estos nombres en
+      src/.
+    confidence: high
+    status: validated
+    export_relevance: >
+      Es el documento que este incremento de Specifications v1.0 debe
+      preceder y respetar — ninguna clase aquí descrita se implementa todavía.
+    limitations:
+      - "Describe diseño aprobado, no un contrato ejecutable todavía."
+
+  - evidence_id: "evidence:architecture.functional_architecture"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/functional_architecture.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Tabla de outputs por estado: reportes de cobertura de mapping y
+      manifest/resúmenes de proyecto = Implemented; "CSV definitivo de carga
+      a Enablon" = Approved Design.
+    confidence: high
+    status: validated
+    export_relevance: "Confirma que hoy no existe generación de CSV de carga."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.knowledge_repository"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/knowledge_repository.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Sin persistencia todavía (Planned, Fase 5). Documenta la cadena de
+      trazabilidad completa: SourceField → Mapping → MappingDecision →
+      MappingCoverageFinding → CrossModuleActionPlanBuffer →
+      ProjectAnalysisResult → CSV de importación (Approved Design).
+    confidence: high
+    status: validated
+    export_relevance: "Define la cadena de trazabilidad que un CSV de exportación deberá preservar."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.naming_conventions"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/naming_conventions.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Convenciones de nombres (PascalCase, IDs deterministas
+      namespace:contexto.slug#fragmento). Tabla de "Future Improvement" (línea
+      91): renombrar `ready_for_final_load` → `ready_for_csv_generation`,
+      marcado explícitamente como NO aplicado todavía.
+    confidence: high
+    status: validated
+    export_relevance: >
+      El rename propuesto es la única pista textual existente sobre una
+      futura fase de generación de CSV — recomendación, no decisión.
+    limitations: []
+
+  - evidence_id: "evidence:architecture.processing_flow"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/processing_flow.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Flujo ASCII completo: Schema/Query/Mapping Analysis → Migration
+      Objects → Module Analysis → Project Analysis (Implemented) → Export
+      Planning → CSV Generation (Approved Design) → QA → Entrega (Planned).
+    confidence: high
+    status: validated
+    export_relevance: "Sitúa exactamente dónde empezaría el Export Engine en el pipeline."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.project_status"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/project_status.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Matriz Implemented/Approved Design/Planned. Nota de precisión:
+      mapping_engine.py está "implementado pero no actualizado" (no
+      "pendiente"); excel_reader.read_field_mapping_sheet() conserva su
+      defecto documentado por compatibilidad.
+    confidence: high
+    status: validated
+    export_relevance: "Inventario base de qué existe realmente hoy en el repo."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.roadmap"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/roadmap.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      7 fases: Knowledge Engine, Project Analysis (Implemented); Export
+      Engine (Fase 3, Approved Design); Validación (Fase 4); Repositorio
+      (Fase 5); Versionado (Fase 6); Asistente IA (Fase 7). API/UI sin fase
+      asignada.
+    confidence: high
+    status: validated
+    export_relevance: "Sitúa Export Specifications v1.0 como el paso previo a la Fase 3."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.technical_architecture"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/technical_architecture.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Diagrama de capas y dirección de dependencia. Reafirma que
+      project_analysis.py nunca reimplementa lógica de mapping/coverage y que
+      module_analysis.py nunca decide ready_for_final_load.
+    confidence: high
+    status: validated
+    export_relevance: "Confirma dirección de dependencia que el Export Engine deberá respetar (solo consume, no reinterpreta)."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.adr_001_migration_object"
+    evidence_type: approved_functional_decision
+    path: "docs/architecture/v1.0/decisions/ADR-001-migration-object-centric-model.md"
+    related_modules: ["eventos", "simulacros"]
+    related_migration_objects:
+      - "eventos.Events"
+      - "eventos.Impacts"
+      - "eventos.Investigations"
+      - "eventos.PSM_Forms"
+      - "simulacros.Drills"
+      - "simulacros.List_of_Activities"
+    description: >
+      Decisión aprobada: MigrationObject como unidad granular bajo Module.
+      Ejemplo explícito citado: Eventos → Events/Impacts/Investigations/PSM
+      Forms; Simulacros → Drills/List of Activities.
+    confidence: high
+    status: validated
+    export_relevance: >
+      Única fuente textual que nombra "List of Activities" como
+      MigrationObject de Simulacros — usado en Tarea 2 para justificar ese
+      objeto.
+    limitations: []
+
+  - evidence_id: "evidence:architecture.adr_002_mapping_decision_vs_finding"
+    evidence_type: approved_functional_decision
+    path: "docs/architecture/v1.0/decisions/ADR-002-mapping-decision-vs-coverage-finding.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Separa MappingDecision (estable, sin recuentos) de
+      MappingCoverageFinding (observado, con affected_record_count /
+      example_historical_ids por analysis_run_id).
+    confidence: high
+    status: validated
+    export_relevance: "Un ExportDefinition futuro deberá consumir MappingDecision, no reinterpretar counts."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.adr_003_action_plans_cross_module"
+    evidence_type: approved_functional_decision
+    path: "docs/architecture/v1.0/decisions/ADR-003-action-plans-cross-module.md"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      Action Plans es processing_scope=cross_module, load_phase=final,
+      alimentado por ITP_Acciones_correctoras clasificada por idorigenac.
+      ready_for_final_load reservado en exclusiva a
+      project_analysis.py::finalize_action_plans().
+    confidence: high
+    status: validated
+    export_relevance: "Base directa de action_plans_assessment.md — ver Tarea 5."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.adr_004_exact_parent_resolution"
+    evidence_type: approved_functional_decision
+    path: "docs/architecture/v1.0/decisions/ADR-004-exact-parent-resolution.md"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      resolve_action_plan_parents() resuelve solo por coincidencia exacta
+      (mismo source_system + target_historical_reference) — nunca por
+      similitud difusa. Sin match: waiting_for_parent o blocked según si
+      queda scope pendiente.
+    confidence: high
+    status: validated
+    export_relevance: "Restringe qué puede asumirse como 'resuelto' antes de exportar Action Plans."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.adr_005_analysis_export_separation"
+    evidence_type: approved_functional_decision
+    path: "docs/architecture/v1.0/decisions/ADR-005-analysis-export-separation.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      El Export Engine (Approved Design) es consumidor puro de
+      ProjectAnalysisResult — el Knowledge Engine nunca conoce el formato de
+      importación de Enablon.
+    confidence: high
+    status: validated
+    export_relevance: "Principio arquitectónico que separa este incremento (evidencia) de la implementación futura."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.adr_006_csv_not_direct_load"
+    evidence_type: approved_functional_decision
+    path: "docs/architecture/v1.0/decisions/ADR-006-csv-generation-not-direct-load.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      El framework produce como máximo un CSV, nunca una carga directa a
+      Enablon (API o UI) — restricción de alcance a nivel de todo el
+      proyecto.
+    confidence: high
+    status: validated
+    export_relevance: "Restricción de alcance heredada literalmente en las instrucciones de este incremento."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.diagram_action_plan_flow"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/diagrams/action_plan_flow.md"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: "Diagrama ASCII del flujo module_analysis.py → project_analysis.py → ActionPlanGlobalCoverage."
+    confidence: high
+    status: validated
+    export_relevance: "Referencia directa para action_plans_assessment.md."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.diagram_export_flow"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/diagrams/export_flow.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Cabecera explícita: "Todo lo mostrado en este diagrama es Approved
+      Design. No existe código." Cadena completa ProjectAnalysisResult →
+      ExportPlan → ExportDefinition → CSV Generator → CSV Writer → CSV
+      Validator → ExportPackage+Manifest → Entrega (fuera de alcance).
+    confidence: high
+    status: validated
+    export_relevance: "El diagrama que este incremento de evidencia debe preceder, no implementar."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.diagram_platform_overview"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/diagrams/platform_overview.md"
+    related_modules: []
+    related_migration_objects: []
+    description: "Pipeline completo de la plataforma, con EXPORT ENGINE marcado Approved Design, sin código."
+    confidence: high
+    status: validated
+    export_relevance: "Vista de conjunto."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.diagram_record_lifecycle"
+    evidence_type: architecture_documentation
+    path: "docs/architecture/v1.0/diagrams/record_lifecycle.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Traza un valor de campo desde la fila SQL hasta el CSV de importación
+      (Approved Design, NO implementado), pasando por SelectExpression →
+      Mapping → MappingDecision → MappingCoverageFinding.
+    confidence: high
+    status: validated
+    export_relevance: "Plantilla conceptual para evidence_to_specification_flow.mmd."
+    limitations: []
+
+  - evidence_id: "evidence:architecture.changelog_v1_0"
+    evidence_type: architecture_documentation
+    path: "docs/changelog/architecture_changelog.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Único entry (v1.0, 2026-07-22). Documenta el rename futuro no aplicado
+      ready_for_final_load → ready_for_csv_generation. Declara que ese
+      incremento no tocó src/, tests/, config/, inputs/, outputs/, sql/.
+    confidence: high
+    status: validated
+    export_relevance: "Precedente directo de este incremento (documentación pura, sin tocar código)."
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # Configuración del proyecto (config/*.yaml)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:config.modules_yaml"
+    evidence_type: approved_functional_decision
+    path: "config/modules.yaml"
+    related_modules: ["simulacros", "safety_meetings", "moc", "bypass", "eventos", "ops", "inspecciones", "ap"]
+    related_migration_objects: []
+    description: >
+      Registro de 8 módulos con fuente_sistema, tablas_origen,
+      campo_entidad_origen/destino, clave_correlacion (donde existe),
+      csv_enablon_real, volumetria_conocida y defectos_confirmados. Incluye
+      idcentro_map_itp, idcentro_map_gct, rollback_entities e
+      hallazgo_1_infra_migracion como bloques transversales.
+    confidence: high
+    status: partially_reviewed
+    export_relevance: >
+      Fuente primaria de campo_entidad_destino_csv y csv_enablon_real por
+      módulo — insumo directo del inventario de MigrationObject.
+    limitations:
+      - "Campos presentes de forma inconsistente entre módulos (p. ej. clave_correlacion falta en safety_meetings, bypass, ops, inspecciones)."
+      - "visitas_seguridad_y_otros solo existe como clave anidada bajo ap.idorigenac_por_modulo, no como módulo propio."
+      - "El nombre de clave 'ap' no coincide con el slug 'action_plans' usado en tests/model.py."
+
+  - evidence_id: "evidence:config.validation_rules_yaml"
+    evidence_type: approved_functional_decision
+    path: "config/validation_rules.yaml"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Catálogo de 9 reglas de transformación (nullcontrol, concat, barconcat,
+      titlefix, cloneorigin, replaceinreference, boolorigin, lookup_simple,
+      lookup_dinamico_dos_pasos) con confirmado_con_datos_reales por regla, y
+      6 data_quality_checks.
+    confidence: high
+    status: partially_reviewed
+    export_relevance: >
+      confirmado_con_datos_reales=false/parcial en replaceinreference y
+      boolorigin implica que cualquier ExportDefinition que dependa de ellas
+      hereda evidence_pending.
+    limitations:
+      - "replaceinreference y boolorigin: 'no verificado con datos reales aún' (según CLAUDE.md y este archivo)."
+
+  - evidence_id: "evidence:config.databases_yaml"
+    evidence_type: unknown
+    path: "config/databases.yaml"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Configuración técnica de acceso de solo lectura (drivers, variables de
+      entorno, read_only=true, forbid_statements, max_rows_per_query). No
+      contiene credenciales (usa nombres de variable *_env).
+    confidence: high
+    status: identified
+    export_relevance: "Ninguna directa — es configuración de acceso, no evidencia de reglas de negocio de exportación."
+    limitations: ["No aporta evidencia funcional para el diseño de exportación."]
+
+  - evidence_id: "evidence:config.settings_yaml"
+    evidence_type: unknown
+    path: "config/settings.yaml"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Rutas de carpetas (12 claves) y ajustes generales: default_encoding
+      "utf-8-sig", default_date_format "%d/%m/%Y".
+    confidence: high
+    status: identified
+    export_relevance: >
+      default_encoding=utf-8-sig ya es el estándar de todos los CSV
+      generados por mapping_coverage.py/project_analysis.py — relevante como
+      precedente, aunque no define el encoding de los CSV de Enablon.
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # SQL de extracción (sql/source_queries/)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:sql_source.eventos_full_join"
+    evidence_type: source_sql
+    path: "sql/source_queries/Eventos/SQLQuery- Eventos Antiguos date format  full join.sql"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Events", "eventos.Investigations"]
+    description: >
+      FULL JOIN entre ITP_ANALISIS (14169 filas) e
+      ITP_INFORME_INVEST_PR227 (9496 filas). El recuento ingenuo de la query
+      no equivale a "eventos a migrar".
+    confidence: high
+    status: validated
+    export_relevance: "Afecta directamente qué se considera 'origen' al construir el ExportDefinition de Investigations."
+    limitations: []
+
+  - evidence_id: "evidence:sql_source.ap_acciones_correctoras"
+    evidence_type: source_sql
+    path: "sql/source_queries/AP/Acciones_correctoras.sql"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      FULL JOIN entre ITP_ACCIONES_CORRECTORAS e ITP_ORIGEN_AC por
+      IDOrigenAC — única tabla origen de Action Plans, clasificada por
+      idorigenac.
+    confidence: high
+    status: validated
+    export_relevance: "Fuente SQL única del objeto transversal Action Plans."
+    limitations: []
+
+  - evidence_id: "evidence:sql_source.moc_ct_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/MOC/"
+    related_modules: ["moc"]
+    related_migration_objects: ["moc.Change_Register"]
+    description: >
+      9 ficheros. DB_MOC_CT.sql tiene 16 LEFT JOIN (FASE1..FASE16, incl.
+      FASE14_1) sobre CT_SOLICITUDES_CT2 — un join por fase de workflow.
+    confidence: high
+    status: partially_reviewed
+    export_relevance: "Explica estructuralmente el defecto 'fases de flujo incorrectas' (tickets #7249/#7363/#7482)."
+    limitations: ["Solo DB_MOC_CT.sql revisado en detalle; el resto de ficheros del folder no se han leído línea a línea."]
+
+  - evidence_id: "evidence:sql_source.simulacros_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/Simulacros/"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.Drills", "simulacros.List_of_Activities"]
+    description: "5 ficheros. SQLQuery - DATASET SIMULACRO.sql es de una sola tabla (ITP_SIMULACRO), sin joins."
+    confidence: high
+    status: partially_reviewed
+    export_relevance: "Confirma Simulacros como el módulo estructuralmente más simple."
+    limitations: ["4 de 5 ficheros del folder no se han leído en detalle (SQLQuery4/6/9.sql, Acciones correctoras.sql)."]
+
+  - evidence_id: "evidence:sql_source.sm_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/SM/"
+    related_modules: ["safety_meetings"]
+    related_migration_objects: ["safety_meetings.Group_Meetings", "safety_meetings.Update_External_Meeting_Participations"]
+    description: "3 ficheros: SM2025.sql, Asistentes_SM2025.sql, Acciones_SM2025.sql."
+    confidence: medium
+    status: identified
+    export_relevance: "Asistentes_SM2025.sql es candidato plausible como fuente de Update External Meeting Participations, sin confirmar en config/modules.yaml."
+    limitations: ["Ningún fichero de este folder se ha leído en detalle todavía."]
+
+  - evidence_id: "evidence:sql_source.bypass_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/bypass/"
+    related_modules: ["bypass"]
+    related_migration_objects: ["bypass.By_Passes"]
+    description: "2 ficheros: query_Bypass_prev2025.sql, SQLQuery-dataset_BES.sql."
+    confidence: medium
+    status: identified
+    export_relevance: "Fuente SQL de By-Passes."
+    limitations: ["No leídos en detalle en este incremento."]
+
+  - evidence_id: "evidence:sql_source.ops_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/OPS/"
+    related_modules: ["ops"]
+    related_migration_objects: ["ops.JSO"]
+    description: "2 ficheros: SQLQuery- OPS_ANTIGUAS.sql, SQLQuery_OPS_NUEVOS.sql — sistema antiguo y nuevo por separado."
+    confidence: medium
+    status: identified
+    export_relevance: "Fuente SQL de JSO."
+    limitations: ["No leídos en detalle en este incremento."]
+
+  - evidence_id: "evidence:sql_source.inspecciones_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/Inspecciones/"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Inspections", "inspecciones.Observations", "inspecciones.Inspection_Data"]
+    description: >
+      6 ficheros cubriendo 3 subtipos (IPS, PW/PDT, HK) con variantes 0/1_Update,
+      más Adjuntos_Inspecciones.sql.
+    confidence: medium
+    status: identified
+    export_relevance: "Fuente SQL de los 3 MigrationObject de Inspecciones."
+    limitations: ["No leídos en detalle en este incremento."]
+
+  - evidence_id: "evidence:sql_source.psm_folder"
+    evidence_type: source_sql
+    path: "sql/source_queries/PSM/"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.PSM_Forms"]
+    description: >
+      2 ficheros: SQLQuery_DATOS PSM_EVT.sql, SQLQuery_DATOS PSM1.sql. PSM
+      tiene su propio folder de nivel superior en sql/source_queries/, pero
+      config/modules.yaml modela "psm" como submódulo de "eventos", no como
+      módulo propio.
+    confidence: medium
+    status: identified
+    export_relevance: "Fuente SQL de PSM Forms — la discrepancia de nivel folder-vs-config debe resolverse (ver open_questions.md)."
+    limitations:
+      - "Inconsistencia estructural observada (folder propio vs. submódulo en config), no confirmada como error o decisión deliberada."
+      - "Ficheros no leídos en detalle en este incremento."
+
+  # ---------------------------------------------------------------------
+  # ETL Excel (inputs/_incoming_claude_web/Bloque1_ETL/)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:etl.eventos_antiguos_filtroeje"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL - Eventos Antiguos_FiltroEje_SITEPESR.xlsx"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Events", "eventos.Investigations"]
+    description: >
+      ETL Excel original de Eventos Antiguos con ajuste de eje de entidad.
+      Analizado estructuralmente (74 hojas, sin macros, con Power Query) y
+      vía su propia hoja Index en el incremento de evidencia ETL: confirma
+      claves de actualización IDadaptado↔CS_HistoricalEventID (Events),
+      IdImpactoGenerado2↔CS_HistImpactIDOH y
+      StandardPersonalImpactKey/IdImpactoGenerado↔CS_HistImpactID (dos
+      variantes distintas para Impacts), IDadaptado↔CS_HistoricalExtenalId
+      (Investigations). Ver evidence:etl_workbook.eventos_antiguos_filtroeje
+      en etl_catalog.yaml.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "Fuente de reglas de transformación históricas del objeto Events/Investigations."
+    limitations:
+      - "Solo se leyó la hoja Index y el listado estructural de hojas — no se analizaron en detalle las hojas de mapeo/dato."
+      - "Filas 9 y 15 del Index registran claves con prefijo '//' (//infMed) — referencia de columna no resuelta por el propio proceso generador del log, ver etl_evidence_assessment.md §7."
+
+  - evidence_id: "evidence:etl.eventos_nuevos_full_ajusteeje"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- Eventos nuevos - FULL_AjusteEje_SITEPSER.xlsx"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Events", "eventos.Impacts", "eventos.Investigations", "eventos.PSM_Forms"]
+    description: >
+      ETL Excel de Eventos Nuevos. Analizado estructuralmente (105 hojas,
+      con Power Query, 2 external links) y vía su hoja Index (25 filas, el
+      pipeline más largo confirmado — 14 pasos create/update). Confirma que
+      PSM Forms se crea desde DB-ITP-EVT-03-inv (misma tabla que
+      Investigations fase 3) vía MAP-PSM-FORMS_Create, y sus respuestas
+      desde DB-ITP-PSM vía MAP-PSM-FORMS_CreateAns.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "Fuente de reglas de transformación de Events/Impacts/Investigations/PSM Forms (sistema nuevo)."
+    limitations:
+      - "Solo se leyó la hoja Index — no se analizaron en detalle las hojas de mapeo/dato."
+      - "No resuelve la ambigüedad estructural de PSM (folder propio de SQL vs. submódulo de config) — solo confirma la fuente compartida con Investigations dentro de este workbook."
+      - "2 external links sin resolver."
+
+  - evidence_id: "evidence:etl.ap_gct_new_sitecan"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- AP_GCT_NEW_SITECAN.xlsx"
+    related_modules: ["ap", "moc"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      ETL de Action Plans específico del sistema GCT (solo MOC), según
+      config/modules.yaml:268. Analizado vía su hoja Index: confirma
+      Update(IDAccionCorrectora,CS_HistoricalAPID) como clave de
+      correlación propia de Action Plans (distinta de
+      CS_HistoricalOriginID) — ver action_plans_assessment.md Tarea 8.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "Uno de los dos ETL que alimentan Action Plans."
+    limitations:
+      - "Solo se leyó la hoja Index."
+      - "Fila 5 del Index: Desc='Nunca' para CT_ACCIONES_CT->CSV_AP_MOC2, pero Crear?='sí' y Log='OK' — inconsistencia interna no resuelta."
+      - "1 external link sin resolver."
+
+  - evidence_id: "evidence:etl.ap_ajuste_entidad_new_sitecan"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- AP-Con Ajuste Entidad_NEW_SIETCAN.xlsx"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      ETL de Action Plans para el resto de módulos (no-MOC), según
+      config/modules.yaml:268. El archivo de mayor tamaño de todo el
+      proyecto (342MB, 72 hojas). Analizado vía su hoja Index: confirma el
+      mismo patrón Update(IDAccionCorrectora,CS_HistoricalAPID) para los 7
+      módulos de origen (EV_new, EV_old, IPS, SIMS, OPS, SM, OTROS, HAZ),
+      todos vía la misma hoja MAP-AP + MAP-updatedate.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "El segundo de los dos ETL que alimentan Action Plans."
+    limitations:
+      - "Solo se leyó la hoja Index, dado el tamaño del archivo."
+      - "1 external link sin resolver."
+
+  - evidence_id: "evidence:etl.inspecciones_new_formulas"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- InspeccionesNEW (version formulas)_SIETCAN.xlsx"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Inspections", "inspecciones.Observations", "inspecciones.Inspection_Data"]
+    description: >
+      ETL Excel de Inspecciones, variante 'con fórmulas' (201MB, 84 hojas).
+      Su hoja Index contiene una advertencia explícita del propio autor:
+      'IMPORTANTE: DESACTIVAR CALCULO AUTOMATICO DE FORMULAS ANTES DE
+      ACTUALIZAR DATASET O GENERAR VALORES' — confirma con evidencia
+      textual directa el riesgo que la regla de análisis seguro de este
+      proyecto (no recalcular fórmulas) ya anticipaba.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "Fuente de reglas de transformación de Inspecciones."
+    limitations:
+      - "Solo se leyó la hoja Index."
+      - "El Log de dos filas referencia URLs de un entorno Enablon de desarrollo (dominio cepsacorp-dev.ps.enablon.io) — no reproducidas completas en la documentación por prudencia."
+
+  - evidence_id: "evidence:etl.reuniones_grupo_fixentities"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- reunionesdegrupo-fixEntities_SITECAN.xlsx"
+    related_modules: ["safety_meetings"]
+    related_migration_objects: ["safety_meetings.Group_Meetings", "safety_meetings.Update_External_Meeting_Participations"]
+    description: >
+      ETL Excel de Safety Meetings (nombrado 'reunionesdegrupo', 21MB, 39
+      hojas). Su hoja Index confirma ITP-SM-DBC->MAP-SM->CSV_SM_FULL (Group
+      Meetings) e ITP_ASISTENTES_RG->MAP-Asist->CSV_Asistentes_FULL —
+      primera confirmación estructural de que Asistentes/Update External
+      Meeting Participations tiene su propio paso de ETL dedicado (antes
+      solo inferido por nombre de archivo SQL).
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: >
+      El nombre de archivo usa 'reunionesdegrupo', coincidente con el slug
+      usado en tests/test_project_analysis.py, no con 'safety_meetings' de
+      config/modules.yaml — ver open_questions.md.
+    limitations:
+      - "Solo se leyó la hoja Index."
+      - "Sigue sin clave de correlación documentada para Update External Meeting Participations."
+      - "Filas 6-7 del Index contienen URLs completas de administración de Enablon UAT — no reproducidas completas en la documentación."
+
+  - evidence_id: "evidence:etl.bcm_simulacros_updateeje"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.Drills", "simulacros.List_of_Activities"]
+    description: >
+      ETL Excel de Simulacros (BCM). Objeto de análisis PRIORITARIO del
+      incremento de evidencia ETL — 45 hojas leídas (cabecera + muestra de
+      filas, fórmula y valor cacheado). Confirma con fórmula real: clave de
+      correlación CS_HistoricalOriginID=IDSimulacro (XLOOKUP en MapeoSims);
+      regla de duración con mes de 30 días fijo y redondeo a 5 min
+      (CalculoHorasDiasMinutos); lookup dinámico en 2 pasos para CS_Typology
+      (Mapeo_Tipo_sim); titlefix aplicado como wildcard (CharacterFix);
+      3 fórmulas distintas para el campo 'Reference' entre hojas de salida
+      sucesivas (ver traceability_catalog.yaml, ambiguous). Ver
+      object_assessments/drills_evidence_assessment.md para el detalle
+      completo.
+    confidence: high
+    status: validated
+    export_relevance: "Módulo cerrado y ya validado — mejor candidato para un primer draft de ExportDefinition."
+    limitations:
+      - "Analizado sobre una muestra de 2-8 filas por hoja, no el archivo completo (hasta 12302 filas en las hojas de mayor volumen)."
+      - "No se confirmó qué proceso resuelve IDCentro -> CS_ImpactedEntities (no ocurre dentro de MapeoSims) — trace_status=missing."
+      - "ITP_USUARIOS e ITP_ASIST_SIMS(_EXT) contienen nombres reales y correos corporativos — no reproducidos (PII)."
+
+  - evidence_id: "evidence:etl.bypass_ajusteentidad_new"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_Bypass_AjusteEntidadNEW_SITECAN.xlsx"
+    related_modules: ["bypass"]
+    related_migration_objects: ["bypass.By_Passes"]
+    description: >
+      ETL Excel de Bypass (BES, 29MB, 31 hojas). Confirma la existencia de
+      una hoja 'CharacterFix' (patrón titlefix) igual que en Simulacros —
+      evidencia de que titlefix se declara en múltiples ETL del sistema
+      ITP, no solo en MOC/GCT (ver open_questions.md OQ-GLOBAL-02, alcance
+      ampliado). Esta es, a su vez, el ETL de origen del que
+      'CamposXmlBES_SIMS_exportado' (Simulacros) copió su nombre.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "Fuente de reglas de transformación de By-Passes."
+    limitations:
+      - "Solo se leyó la hoja Index (3 filas) y el listado estructural de hojas."
+      - "Salida a dos CSV distintos (CSV_BES_ALL, CSV_CenCAN_BES) desde el mismo mapeo — diferencia funcional entre ambos no confirmada."
+
+  - evidence_id: "evidence:etl.moc_m_new_sitecan"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_MOC_m_NEW_SITECAN.xlsm"
+    related_modules: ["moc"]
+    related_migration_objects: ["moc.Change_Register"]
+    description: >
+      ETL Excel-macro de MOC (52MB, 65 hojas). Según CLAUDE.md y
+      outputs/reports, el VBA de este libro está confirmado 100% vacío (no
+      reverificado en este incremento — regla dura de no ejecutar macros).
+      Su hoja Index confirma en texto libre: "estamos aún averiguando como
+      generar los risk assesment porque las metodologias son dificiles de
+      asignar" — admisión explícita de trabajo inconcluso por el propio
+      autor, relevante para OQ-TPL-03.
+    confidence: high
+    status: partially_reviewed
+    export_relevance: "titlefix se confirma ejecutado por un proceso externo no documentado (no está en este VBA)."
+    limitations:
+      - "Solo el VBA fue auditado (por análisis manual previo, no en este incremento); hojas de datos/mapeo (Mapeo_MOC_*, Mapeo_RiskAss*) no revisadas en detalle, solo la hoja Index."
+      - "Único workbook del proyecto con vbaProject.bin presente."
+
+  - evidence_id: "evidence:etl.ops_arreglo_entidad"
+    evidence_type: etl_definition
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_OPS_ArregloEntidad_SIETCAN.xlsx"
+    related_modules: ["ops"]
+    related_migration_objects: ["ops.JSO"]
+    description: >
+      ETL Excel de OPS (202MB, 60 hojas). Su hoja Index registra un ERROR
+      explícito del propio proceso generador: "Update: columna origen no
+      encontrada (IdOpsAdaptado) (1)" — evidencia directa y textual de una
+      referencia rota, no inferida. Confirma también
+      IdOpsAdaptado/IdOps↔CS_HistoricalOriginID como clave de correlación
+      propia de JSO (a diferencia de Action Plans, que usa
+      CS_HistoricalAPID).
+    confidence: medium
+    status: conflicting
+    export_relevance: "Fuente de reglas de transformación de JSO."
+    limitations:
+      - "Solo se leyó la hoja Index."
+      - "Fila 2 del Index tiene columnas Crear?/Log vacías mientras Debug='OK' — registro de log incompleto."
+
+  # ---------------------------------------------------------------------
+  # Mappings (inputs/_incoming_claude_web/Bloque2 y Bloque3)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:mapping.bloque2_zip_ap"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/AP.zip"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      RECLASIFICADO en el incremento de mapping evidence: abierto y
+      verificado. Contiene 1 archivo (AP/Acciones_correctoras.sql),
+      idéntico byte a byte (SHA-256) a sql/source_queries/AP/Acciones_correctoras.sql.
+      NO contiene ningún mapping de campo pese al nombre de la carpeta que
+      lo contiene ("Mappings_SQL_ENA") — ver
+      mapping_evidence_assessment.md y evidence/mapping_catalog.yaml
+      (mapping:bloque2.ap.no_field_mapping_found).
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — es un duplicado de source_sql ya catalogado, no un insumo nuevo de ExportDefinition."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_bypass"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/bypass.zip"
+    related_modules: ["bypass"]
+    related_migration_objects: ["bypass.By_Passes"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 2 archivos, ambos
+      idénticos byte a byte a sql/source_queries/bypass/. Sin mapping de
+      campo — ver mapping_evidence_assessment.md.
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — duplicado de source_sql ya catalogado."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_eventos"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Eventos.zip"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Events", "eventos.Impacts", "eventos.Investigations"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 13 archivos, todos
+      idénticos byte a byte a sql/source_queries/Eventos/. Sin mapping de
+      campo. Hallazgo adicional: dos entradas ("...LESIÓN ANTIGUOS.sql")
+      tienen el nombre correctamente codificado en UTF-8 dentro del ZIP,
+      mientras que su copia suelta en sql/source_queries/Eventos/ tiene
+      mojibake genuino en el nombre — ver mapping_evidence_assessment.md §5.
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping. La incidencia de encoding de nombre sí es relevante para trazabilidad de archivo."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_inspecciones"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Inspecciones.zip"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Inspections", "inspecciones.Observations", "inspecciones.Inspection_Data"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 6 archivos, todos
+      idénticos byte a byte a sql/source_queries/Inspecciones/. Sin mapping
+      de campo.
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — duplicado de source_sql ya catalogado."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_moc"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/MOC.zip"
+    related_modules: ["moc"]
+    related_migration_objects: ["moc.Change_Register"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 9 archivos, todos
+      idénticos byte a byte a sql/source_queries/MOC/, incluido
+      DB_MOC_CT.sql con sus 16 LEFT JOIN por fase de workflow. Sin mapping
+      de campo — no explica el mecanismo de titlefix ni el CCP pendiente.
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — duplicado de source_sql ya catalogado."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_ops"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/OPS.zip"
+    related_modules: ["ops"]
+    related_migration_objects: ["ops.JSO"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 2 archivos, ambos
+      idénticos byte a byte a sql/source_queries/OPS/. Sin mapping de campo.
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — duplicado de source_sql ya catalogado."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_psm"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/PSM.zip"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.PSM_Forms"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 2 archivos, ambos
+      idénticos byte a byte a sql/source_queries/PSM/. Sin mapping de campo.
+      No resuelve la ambigüedad estructural de PSM (folder propio vs.
+      submódulo de eventos en config).
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — duplicado de source_sql ya catalogado."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_reunionesdegrupo"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Reunionesdegrupo.zip"
+    related_modules: ["safety_meetings"]
+    related_migration_objects: ["safety_meetings.Group_Meetings", "safety_meetings.Update_External_Meeting_Participations"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 3 archivos (carpeta
+      interna 'SM/', no 'Reunionesdegrupo/'), todos idénticos byte a byte a
+      sql/source_queries/SM/. Sin mapping de campo. La carpeta interna 'SM'
+      coincide con sql/source_queries/SM/ — ni el ZIP ni las queries usan
+      'reuniones_de_grupo', que solo aparece en tests/ y en el ETL Excel.
+    confidence: high
+    status: validated
+    export_relevance: "Ninguna como mapping — duplicado de source_sql ya catalogado. El naming interno 'SM' es un dato adicional para OQ-GLOBAL-03."
+    limitations: ["Validado que este ZIP NO contiene mapping de campo, entidad ni relación."]
+
+  - evidence_id: "evidence:mapping.bloque2_zip_simulacros"
+    evidence_type: source_sql
+    path: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Simulacros.zip"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.Drills", "simulacros.List_of_Activities"]
+    description: >
+      RECLASIFICADO: abierto y verificado. Contiene 5 archivos de primer
+      nivel, todos idénticos byte a byte a sql/source_queries/Simulacros/.
+      Sin mapping de campo. Además contiene una entrada anidada SM.zip
+      (2507 bytes) que resultó ser, byte a byte, una copia íntegra completa
+      de Reunionesdegrupo.zip — anomalía de packaging documentada en
+      mapping_evidence_assessment.md §4 y en
+      mapping_catalog.yaml (mapping:bloque2.simulacros.nested_zip_packaging_anomaly).
+      Simulacros.zip tiene fecha de modificación (2026-07-22) un día
+      posterior a los otros 8 ZIP (2026-07-21).
+    confidence: high
+    status: conflicting
+    export_relevance: "Ninguna como mapping. La anomalía de ZIP anidado es relevante para la integridad del propio proceso de empaquetado de evidencia."
+    limitations:
+      - "Validado que los 5 archivos .sql propios de este ZIP NO contienen mapping de campo."
+      - "El ZIP anidado (SM.zip) no se ha eliminado ni modificado — se documenta como conflicto, no se resuelve unilateralmente (ver OQ-GLOBAL-06)."
+
+  - evidence_id: "evidence:mapping.gct_uorg_entidad"
+    evidence_type: mapping_definition
+    path: "inputs/_incoming_claude_web/Bloque3_Mappings_Entidades/260311 Mapeo gct Enablon-Match UORG ENTIDAD (1).xlsx"
+    related_modules: ["moc"]
+    related_migration_objects: ["moc.Change_Register"]
+    description: >
+      Mapeo de entidades GCT (UORG) hacia Enablon, específico de MOC.
+      Abierto y analizado en el incremento de evidencia ETL/entidad: 5
+      hojas (Niveles, Exportación eje, Plantas, Fabricas, Unidades).
+      'Exportación eje' (1722 filas) es, con alta confianza, la misma
+      fuente que inputs/entity_catalog/First_Axis_export_bruto.csv (1724
+      filas incl. cabecera). 'Niveles' (392 filas) encadena XLOOKUP entre
+      las 4 hojas del workbook — algunas filas de muestra devuelven
+      'NULL.NULL' en el código final, sin confirmar si es esperado.
+    confidence: high
+    status: validated
+    export_relevance: "Complementa idcentro_map_gct de config/modules.yaml para la resolución de entidad en Change Register."
+    limitations:
+      - "No se ha determinado el orden temporal entre este export y el usado para catalogo_resuelto_code_ruta_site.csv."
+      - "No se ha confirmado si 'NULL.NULL' en Niveles es un resultado esperado o un lookup roto."
+      - "Ver evidence/entity_mapping_catalog.yaml para el detalle fila a fila."
+
+  - evidence_id: "evidence:mapping.itp_primer_eje"
+    evidence_type: mapping_definition
+    path: "inputs/_incoming_claude_web/Bloque3_Mappings_Entidades/Mapeo ITP primer eje enablon_revisado _final1 (version 4).xlsx"
+    related_modules: ["simulacros", "safety_meetings", "eventos", "ops", "inspecciones"]
+    related_migration_objects: []
+    description: >
+      Mapeo de primer eje (entidad) del sistema ITP/Prevención hacia
+      Enablon, 'versión 4' (revisado). Abierto y analizado: 15 hojas, 1
+      oculta ('Centros-empresas-departamentos-', 6154 filas, tabla de
+      referencia base). 10 hojas por site/entidad legal
+      (Estructura/C&CE/Madrid Corporación/MCPF/MCSH/MCPM/M&NC/Site
+      Canarias/PESR/PELR) documentan decisiones "No migra"/"NO MIGRA" ya
+      tomadas, y en Site Canarias/MCPM instrucciones en lenguaje natural
+      pendientes de ejecución (no mappings ya resueltos). 'Mapeo Eje
+      final-modificado' (1696 filas) y 'Eje final 2' (3038 filas) son las
+      hojas más consolidadas, encadenando XLOOKUP contra la hoja oculta.
+    confidence: high
+    status: validated
+    export_relevance: "Complementa idcentro_map_itp; contiene decisiones de no-migración ya documentadas y candidatas a formato de exportación final del eje ITP."
+    limitations:
+      - "No se leyó en detalle la hoja MAPEOFINAL (referenciada por fórmulas pero no abierta)."
+      - "No se ha confirmado cuál de las dos hojas candidatas a mapeo final (Mapeo Eje final-modificado vs. Eje final 2) es la efectivamente usada para producir el catálogo resuelto."
+      - "1 external link sin resolver. Nombre de archivo indica varias revisiones previas (v4) sin diff documentado."
+      - "Ver evidence/entity_mapping_catalog.yaml para el detalle fila a fila."
+
+  # ---------------------------------------------------------------------
+  # Catálogo de entidades
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:entity_catalog.first_axis_bruto"
+    evidence_type: enablon_configuration
+    path: "inputs/entity_catalog/First_Axis_export_bruto.csv"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Export bruto real de Enablon del primer eje de entidades (1724 filas,
+      45 columnas: Parent, Code, EntityEN/FR/ES/ZH/BR, Order, EntityStatus,
+      Input...). Idéntico en contenido a
+      inputs/_incoming_claude_web/Bloque3_Mappings_Entidades/First Axis-20072026-3.csv.
+    confidence: high
+    status: validated
+    export_relevance: "Fuente de verdad del árbol de entidades vigente — base de Ruta1 para todo campo Entity/FirstAxis en cualquier CSV de exportación."
+    limitations:
+      - "Contiene columnas Manager/HSmanager/HRmanager/Email — datos potencialmente personales, mayormente vacíos en la muestra leída pero no garantizado en el resto de filas."
+
+  - evidence_id: "evidence:entity_catalog.resuelto_code_ruta_site"
+    evidence_type: validated_output_csv
+    path: "inputs/entity_catalog/catalogo_resuelto_code_ruta_site.csv"
+    related_modules: ["safety_meetings", "moc", "bypass"]
+    related_migration_objects: []
+    description: >
+      First_Axis enriquecido con Ruta1 (Parent+Code reconstruido) y Centro
+      (site resuelto vía las 162 asociaciones Código→Centro + fallback de
+      mayoría por prefijo de nivel 3). Aplicado y validado en Safety
+      Meetings, MOC y Bypass (0% códigos no catalogados, antes 42-59%).
+    confidence: high
+    status: validated
+    export_relevance: "Reemplaza cualquier Entidades_Mapeo por módulo para resolver el campo Entity/FirstAxis en exportación."
+    limitations: []
+
+  - evidence_id: "evidence:entity_catalog.mapeo_antiguo_referencia"
+    evidence_type: mapping_definition
+    path: "inputs/entity_catalog/entidades_mapeo_ANTIGUO_referencia_historica.csv"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Catálogo Entidades_Mapeo antiguo y fragmentado (681 filas), una copia
+      por módulo, desactualizado. Conserva una fórmula de tabla estructurada
+      de Excel (=Entidades_Enablon_ITP[[#This Row],[Code]]) sin resolver,
+      confirmando que se pegó directo de un libro Excel.
+    confidence: low
+    status: obsolete
+    export_relevance: "Ninguna para exportación futura — se conserva solo como referencia histórica, explícitamente descartado por CLAUDE.md."
+    limitations: ["Obsoleto por diseño — no usar para resolver entidad en ningún ExportDefinition."]
+
+  # ---------------------------------------------------------------------
+  # CSV reales de Enablon (inputs/_incoming_claude_web/Bloque4_CSV_Enablon/)
+  # Candidatos más fuertes para Export Specifications, pero son EXPORTS de
+  # datos reales, no plantillas de importación en blanco confirmadas — ver
+  # limitations en cada entrada y open_questions.md.
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:csv_enablon.action_plans"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Action Plans-20072026-41.csv"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      65223 filas (recuento naive por wc -l), tab-delimited UTF-16LE.
+      Cabecera verificada: Entity, MapsData, LevelNo, TypeOfAction, ...,
+      CS_ByPasses, CS_Meetings, MoCChange, CS_IndependentManualEvents,
+      CS_IndManualOPS, CS_IP, CS_Drills, ..., CS_HistoricalOriginID, ...,
+      Id. Coincide exactamente con campos_de_enlace_a_otros_modulos de
+      config/modules.yaml:280-287.
+      CORRECCIÓN (este incremento, validación cuantitativa de Action
+      Plans): el recuento de 65223 es un artefacto de contar saltos de
+      línea crudos (wc -l) sin respetar el quoting CSV — el fichero tiene
+      22894 campos con saltos de línea incrustados dentro de valores
+      entrecomillados (texto libre multilínea). Parseado respetando el
+      quoting (Python csv, delimiter tab, quotechar '"'), el recuento real
+      es 31444 filas de datos + 1 cabecera = 31445 líneas lógicas. El
+      recuento correcto para cualquier análisis cuantitativo es 31444, no
+      65223 — ver evidence/action_plan_relationship_assessment.yaml y
+      action_plan_relationship_analysis.md.
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia más fuerte disponible de la forma real del CSV de Action Plans."
+    limitations:
+      - "Es una exportación de datos reales, no una plantilla de importación en blanco confirmada por Enablon — no está probado que el import requiera exactamente estas mismas columnas/orden (ver open_questions.md)."
+      - "El recuento de filas citado en incrementos anteriores de esta documentación (65223) era un recuento naive (wc -l) inflado por campos multilínea entrecomillados — corregido en este incremento a 31444 filas de datos reales."
+
+  - evidence_id: "evidence:csv_enablon.by_passes"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/By-Passes of functions and safety elements-20072026-11.csv"
+    related_modules: ["bypass"]
+    related_migration_objects: ["bypass.By_Passes"]
+    description: >
+      8901 filas, tab-delimited UTF-16LE. Cabecera incluye LevelNo, Id,
+      Entity, ..., CS_HistoricalOriginID, CS_ChangeHistoricalID,
+      CS_HistoricalTAG.
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia de la forma real del CSV de By-Passes."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.causes_data"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Causes Data-22072026-73.csv"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      189654 filas, semicolon-delimited. Cabecera: Causes;RowNo;CheckBox;
+      AnswerListAnswer;Why;CS_Other;CS_Entity;CS_Incident;Id. No hay ningún
+      módulo de config/modules.yaml que lo referencie explícitamente como
+      csv_enablon_real.
+    confidence: medium
+    status: evidence_pending
+    export_relevance: >
+      Posible detalle/hijo de Investigations (patrón Why/Why2..Why5 visible
+      también en Investigations-*.csv) — relación INFERIDA, no confirmada.
+    limitations: ["Sin módulo/MigrationObject asignado en config — ver open_questions.md."]
+
+  - evidence_id: "evidence:csv_enablon.change_register"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Change Register-20072026-8.csv"
+    related_modules: ["moc"]
+    related_migration_objects: ["moc.Change_Register"]
+    description: >
+      80396 filas, tab-delimited UTF-16LE, ~110 columnas incl.
+      TemplateUse, Template, FirstAxis, TitleEN..TitleBR,
+      CS_HistoricalOriginID, CS_HistoricalAttachedFiles.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real='Change_Register-*.csv' de config/modules.yaml:127. Evidencia fuerte de forma real."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.checklists_data"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Checklists Data-22072026-67.csv"
+    related_modules: ["moc"]
+    related_migration_objects: []
+    description: >
+      4381 filas, semicolon-delimited. Cabecera: ChangeAssessment;
+      VersionedQuestion;Answer;Comments;Files;CS_HistoricalID;Id.
+    confidence: medium
+    status: evidence_pending
+    export_relevance: >
+      Candidato plausible a "Checklists de Risk Assessment" mencionado en
+      config/modules.yaml:143 (bloque_no_automatizable_sin_api_enablon de
+      MOC) — relación INFERIDA por nombre y contexto, no confirmada.
+    limitations: ["No asignado como MigrationObject formal — ver open_questions.md."]
+
+  - evidence_id: "evidence:csv_enablon.drills"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Drills-22072026-41.csv"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.Drills"]
+    description: >
+      40302 filas, tab-delimited UTF-16LE. Cabecera incluye
+      CS_HistoricalDrillAttendees, CS_HistoricalDrillResponsibleName,
+      CS_HistoricalOriginID, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real='Drills-*.csv' de config/modules.yaml:94. Módulo cerrado — mejor candidato para primer draft."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.events"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Events-20072026-6.csv"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Events"]
+    description: >
+      26295 filas, tab-delimited UTF-16LE. Cabecera incluye Entity,
+      Reference, Classification, Severity, CS_HistoricalEventID,
+      CS_HistoricalPSE, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Eventos en config/modules.yaml:193."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.group_meetings"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Group Meetings-20072026-3.csv"
+    related_modules: ["safety_meetings"]
+    related_migration_objects: ["safety_meetings.Group_Meetings"]
+    description: >
+      65600 filas, tab-delimited UTF-16LE. Cabecera incluye CS_Entity,
+      CS_HistoricalOriginID, CS_HistoricalAtendee, Id, WeekDay.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Safety Meetings en config/modules.yaml:106."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.impacts"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Impacts-20072026-9.csv"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Impacts"]
+    description: >
+      19363 filas, tab-delimited UTF-16LE, ~90 columnas incl.
+      EstimatedRestrictedDays, RealLostDays, CS_HistImpactID (nombre inferido
+      por config, no verificado literal en esta cabecera — ver limitations),
+      CS_HistoricalEventID, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Eventos en config/modules.yaml:193."
+    limitations:
+      - "El agente de investigación no confirmó literalmente la presencia de la columna CS_HistImpactID/CS_HistImpactIDOH citada en config/modules.yaml:191 dentro de esta cabecera — pendiente de re-verificación exacta antes de fijar clave_correlacion en una especificación futura."
+
+  - evidence_id: "evidence:csv_enablon.inspection_data"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Inspection Data-20072026-38.csv"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Inspection_Data"]
+    description: >
+      155336 filas, semicolon-delimited. Cabecera polimórfica: Input;Code;
+      Unit;CheckboxValue;NumberIntegerValue;NumberFloatValue;NumberUnitValue;
+      AnswerDateValue;TextValue;TextAreaValue;PublishedChoiceProperties;
+      PublishedMultiChoiceProperties;CS_Entity;...;Id.
+    confidence: medium
+    status: conflicting
+    export_relevance: >
+      config/modules.yaml:247 anota explícitamente "export parcial, no se
+      puede exportar completo" — este CSV no debe tratarse como
+      representación completa del objeto real en Enablon.
+    limitations:
+      - "El propio catálogo de origen reconoce que esta exportación es incompleta — cualquier ExportDefinition basado solo en este fichero heredaría ese mismo gap."
+
+  - evidence_id: "evidence:csv_enablon.inspections"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Inspections-20072026-22.csv"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Inspections"]
+    description: >
+      35186 filas, tab-delimited UTF-16LE. Cabecera incluye Entity,
+      CS_Location, Status, CS_CancellationReason, HODepartments,
+      CS_HistoricalOriginID, ChecklistsInCard, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Inspecciones en config/modules.yaml:247."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.investigations"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Investigations-20072026-14.csv"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Investigations"]
+    description: >
+      16603 filas, tab-delimited UTF-16LE. Cabecera incluye IncidentID,
+      CS_Why..CS_Why5/CS_Answer5, CS_Ishikawa, CS_RootCauses,
+      CS_HistoricalExtenalId, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con clave_correlacion CS_HistoricalExtenalId de config/modules.yaml:192."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.jso"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/JSO-20072026-19.csv"
+    related_modules: ["ops"]
+    related_migration_objects: ["ops.JSO"]
+    description: >
+      245303 filas (la más voluminosa de Bloque4), tab-delimited UTF-16LE.
+      Cabecera incluye CS_UnsafeBehavior, CS_HistOPSCompanyName,
+      CS_HistOPSCompanyCode, CS_HistoricalOriginID, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real='JSO-*.csv' de config/modules.yaml:223."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.list_of_activities"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/List of Activities-22072026-44.csv"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.List_of_Activities"]
+    description: >
+      72156 filas, tab-delimited UTF-16LE. Cabecera incluye Crisis, BCP,
+      NameEN..NameBR, CS_HistoricalDrillAttendees, CS_ReferenceCrisis, Id.
+    confidence: high
+    status: validated
+    export_relevance: >
+      Única evidencia concreta de la forma real de List of Activities — no
+      mencionado en config/modules.yaml, solo en ADR-001.
+    limitations: ["No referenciado en config/modules.yaml — inconsistencia a resolver."]
+
+  - evidence_id: "evidence:csv_enablon.observations"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Observations-20072026-27.csv"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Observations"]
+    description: >
+      35187 filas, tab-delimited UTF-16LE. Cabecera: Inspection, Checklist,
+      Observation, ObservationDate, Files, Solved, MapsData,
+      CS_HistoricalRecord, CS_HistoricalOriginID, Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Inspecciones. Relación Observations→Inspections con integridad referencial 100% confirmada en config/modules.yaml:261."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  - evidence_id: "evidence:csv_enablon.psm_forms"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/PSM forms-20072026-16.csv"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.PSM_Forms"]
+    description: >
+      2415 filas, semicolon-delimited. Cabecera: Findings;IncidentID;
+      IARiskAssessment;CS_Status;AttachedFiles;Description2;EbGrap;Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Eventos (PSM_forms-*.csv) en config/modules.yaml:193."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada. No se ha podido volumetrizar (per CLAUDE.md, PSM recibido pero no volumetrizado)."]
+
+  - evidence_id: "evidence:csv_enablon.update_external_meeting_participations"
+    evidence_type: validated_output_csv
+    path: "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Update External Meeting Participations-20072026-5.csv"
+    related_modules: ["safety_meetings"]
+    related_migration_objects: ["safety_meetings.Update_External_Meeting_Participations"]
+    description: >
+      17526 filas, semicolon-delimited. Cabecera: Meeting;Attendee;Type;
+      Company;CompanyOther;Id.
+    confidence: high
+    status: validated
+    export_relevance: "Coincide con csv_enablon_real de Safety Meetings en config/modules.yaml:106."
+    limitations: ["Export de datos reales, no plantilla de importación en blanco confirmada."]
+
+  # ---------------------------------------------------------------------
+  # inputs/csv_enablon/ (carpeta destino declarada, hoy vacía salvo el .txt)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:csv_enablon.contenido_esperado_txt"
+    evidence_type: architecture_documentation
+    path: "inputs/csv_enablon/CONTENIDO_ESPERADO.txt"
+    related_modules: ["simulacros", "safety_meetings", "moc", "bypass", "eventos", "ops", "inspecciones", "ap"]
+    related_migration_objects: []
+    description: >
+      Lista 14 nombres de fichero esperados por convención (p. ej.
+      eventos_Events.csv, moc_Change_Register.csv) y explica que los CSV
+      reales no se duplican aquí (~430MB) porque ya están en
+      inputs/_incoming_claude_web/Bloque4_CSV_Enablon/.
+    confidence: high
+    status: validated
+    export_relevance: "Confirma el mapeo 1:1 entre los ficheros de Bloque4 y los nombres de convención por módulo."
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # Incidencias y errores del cliente
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:incidents.helpdesk_export"
+    evidence_type: client_rule
+    path: "inputs/incidents/helpdesk_export_834_tickets.xlsx"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      834 tickets de Help Desk del cliente, 107 categorizados por módulo (el
+      resto sin etiquetar). El ticket #7581 es el propio cliente pidiendo la
+      documentación de mapeo que este proyecto produce.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: >
+      Fuente de defectos confirmados por el cliente citados en
+      config/modules.yaml (p. ej. #7249, #7359, #7553, #7639).
+    limitations:
+      - "Contenido xlsx no reabierto en este incremento (posibles nombres/emails de empleados del cliente en el cuerpo de los tickets)."
+      - "727 de 834 tickets siguen sin categorizar por módulo."
+
+  - evidence_id: "evidence:incidents.errores_detectados_xlsx"
+    evidence_type: unknown
+    path: "inputs/_incoming_claude_web/Bloque5_Errores/erroresdetectados.xlsx"
+    related_modules: []
+    related_migration_objects: []
+    description: "Reporte de errores detectados (184KB). Contenido no inspeccionado en este incremento."
+    confidence: unknown
+    status: evidence_pending
+    export_relevance: "Potencial fuente adicional de defectos confirmados, sin revisar todavía."
+    limitations: ["Contenido no inspeccionado."]
+
+  - evidence_id: "evidence:incidents.errores_con_adjuntos_zip"
+    evidence_type: unknown
+    path: "inputs/_incoming_claude_web/Bloque5_Errores/Erroresdetcadosconadjuntos-21072026-9.zip"
+    related_modules: []
+    related_migration_objects: []
+    description: "Zip de errores con adjuntos (56MB). Contenido no inspeccionado en este incremento."
+    confidence: unknown
+    status: evidence_pending
+    export_relevance: "Potencial fuente adicional de defectos confirmados, sin revisar todavía."
+    limitations:
+      - "Contenido no inspeccionado — el nombre sugiere que puede contener documentos/adjuntos reales de producción."
+
+  # ---------------------------------------------------------------------
+  # Reportes internos ya producidos (outputs/reports/)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:report.estado_general_proyecto"
+    evidence_type: approved_functional_decision
+    path: "outputs/reports/00_Estado_General_Proyecto.md"
+    related_modules: ["simulacros", "safety_meetings", "moc", "bypass", "eventos", "ops", "inspecciones", "ap"]
+    related_migration_objects: []
+    description: >
+      Documento de estado consolidado del análisis manual previo al código.
+      Confirma verbatim todos los hallazgos citados en CLAUDE.md (rollback,
+      Hallazgo #1, catálogo de reglas, hojas huérfanas, orquestación MOC).
+    confidence: high
+    status: validated
+    export_relevance: "Resumen ejecutivo de referencia para cualquier especificación por objeto."
+    limitations: []
+
+  - evidence_id: "evidence:report.catalogo_reglas_cruzado"
+    evidence_type: approved_functional_decision
+    path: "outputs/reports/03_Catalogo_Reglas_Cruzado_Modulos.md"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Catálogo cruzado de reglas de transformación entre los 9 módulos +
+      2 ETL de Acciones, con nivel de confirmación por regla y ejemplos con
+      datos reales.
+    confidence: high
+    status: validated
+    export_relevance: "Fuente primaria del catálogo de reglas ya resumido en CLAUDE.md — referencia para cualquier ExportDefinition futura."
+    limitations: []
+
+  - evidence_id: "evidence:report.etl_simulacros_analysis"
+    evidence_type: approved_functional_decision
+    path: "outputs/reports/01_Analisis_ETL_BCM_SIM_UpdateEje_SITECANARIAS.md"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.Drills"]
+    description: >
+      Análisis técnico del workbook ETL de Simulacros (47 hojas). Documenta
+      4 etapas de exportación con recuento decreciente (12302 → 12104 →
+      11965 → 10575) sin justificación documentada, y que la carga a Enablon
+      parece hacerse por centro/lote, no en una sola pasada.
+    confidence: medium
+    status: partially_reviewed
+    export_relevance: "Aporta contexto operativo (carga por lotes) relevante para el diseño futuro de ExportPackage."
+    limitations: ["La causa de la caída de recuento en 4 etapas queda sin explicar — pendiente de confirmar con el cliente."]
+
+  - evidence_id: "evidence:report.volumetria_simulacros_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/02_Volumetria_por_Site_SIM_ETLvsEnablon.csv"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["simulacros.Drills"]
+    description: "Volumetría por site: Centro, Origen_SQL_DB_OrigenSim, Enablon_real_export, Delta."
+    confidence: high
+    status: validated
+    export_relevance: "Confirma módulo cerrado y gap sano (-4.6%)."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_safety_meetings_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/04_Volumetria_SafetyMeetings_ETLvsEnablon.csv"
+    related_modules: ["safety_meetings"]
+    related_migration_objects: ["safety_meetings.Group_Meetings"]
+    description: "Volumetría por site: Centro, Origen_SQL_ITP_SM_DBC, Enablon_real_GroupMeetings, Delta."
+    confidence: high
+    status: validated
+    export_relevance: "Confirma gap sano tras aplicar catálogo real de entidades."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_moc_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/05_Volumetria_MOC_ETLvsEnablon.csv"
+    related_modules: ["moc"]
+    related_migration_objects: ["moc.Change_Register"]
+    description: "Volumetría MOC por tabla origen: columna descriptiva sin encabezado, Origen_SQL, Enablon_real, Delta."
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia cuantitativa del gap -39% y de la sobreexposición a Hallazgo #1."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_bypass_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/06_Volumetria_Bypass_ETLvsEnablon.csv"
+    related_modules: ["bypass"]
+    related_migration_objects: ["bypass.By_Passes"]
+    description: "Volumetría por site: Centro, Origen_SQL_DBLink_BES, Enablon_real, Delta."
+    confidence: high
+    status: validated
+    export_relevance: "Confirma gap sano (-2.2%) tras aplicar catálogo real."
+    limitations: []
+
+  - evidence_id: "evidence:report.catalogo_entidades_resuelto_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/07_Catalogo_Entidades_Enablon_REAL_resuelto.csv"
+    related_modules: []
+    related_migration_objects: []
+    description: "Code, EntityEN, EntityES, Ruta1, Site_resuelto, EntityStatus."
+    confidence: high
+    status: validated
+    export_relevance: "Copia de trabajo del catálogo resuelto — mismo contenido que inputs/entity_catalog/catalogo_resuelto_code_ruta_site.csv."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_eventos_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/08_Volumetria_Eventos_ETLvsEnablon.csv"
+    related_modules: ["eventos"]
+    related_migration_objects: ["eventos.Events"]
+    description: "Volumetría de Eventos con columna Delta_%."
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia cuantitativa del gap -44% revisado y exposición Hallazgo #1 70.6%."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_ops_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/09_Volumetria_OPS_ETLvsEnablon.csv"
+    related_modules: ["ops"]
+    related_migration_objects: ["ops.JSO"]
+    description: "Volumetría de OPS con columna Delta_%."
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia cuantitativa del gap -11% y exposición Hallazgo #1 32.8%."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_inspecciones_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/10_Volumetria_Inspecciones_ETLvsEnablon.csv"
+    related_modules: ["inspecciones"]
+    related_migration_objects: ["inspecciones.Inspections"]
+    description: "Volumetría de Inspecciones con columna Delta_%."
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia cuantitativa del gap -48.4% y exposición Hallazgo #1 73.8%."
+    limitations: []
+
+  - evidence_id: "evidence:report.volumetria_ap_csv"
+    evidence_type: validated_output_csv
+    path: "outputs/reports/11_Volumetria_AP_ETLvsEnablon.csv"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: "Volumetría de Action Plans con columna Delta_%."
+    confidence: high
+    status: validated
+    export_relevance: "Evidencia cuantitativa de la volumetría de Action Plans."
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # Inventario técnico SQL (outputs/inventory/, logs/, sql/diagnostics/)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:inventory.gct_20260721"
+    evidence_type: source_sql
+    path: "outputs/inventory/gct/20260721_130824/"
+    related_modules: ["moc"]
+    related_migration_objects: []
+    description: >
+      Inventario técnico real (tablas, vistas, columnas, PKs, FKs, índices,
+      procs, funciones, triggers, sinónimos, row counts aproximados) de la
+      base gct, generado por src/analysis/sql_inventory.py.
+    confidence: high
+    status: validated
+    export_relevance: "Base técnica para confirmar estructura real de tablas fuente de MOC antes de fijar un ExportDefinition."
+    limitations: []
+
+  - evidence_id: "evidence:inventory.prevencion_20260721"
+    evidence_type: source_sql
+    path: "outputs/inventory/prevencion/20260721_130608/"
+    related_modules: ["simulacros", "safety_meetings", "bypass", "eventos", "ops", "inspecciones", "ap"]
+    related_migration_objects: []
+    description: "Inventario técnico real equivalente para la base prevencion (sistema ITP)."
+    confidence: high
+    status: validated
+    export_relevance: "Base técnica para confirmar estructura real de tablas fuente de todos los módulos ITP."
+    limitations: []
+
+  - evidence_id: "evidence:logs.sql_inventory_attempts"
+    evidence_type: unknown
+    path: "logs/"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      sql_inventory_gct_20260721_130822.log y
+      sql_inventory_prevencion_20260721_130604.log, ambos de 0 bytes.
+    confidence: unknown
+    status: evidence_pending
+    export_relevance: "Ninguna directa — no contienen registro de ejecución utilizable."
+    limitations: ["Archivos vacíos; el inventario real fue generado por otra vía (ver evidence:inventory.*), no queda claro por qué estos logs quedaron vacíos."]
+
+  - evidence_id: "evidence:sql_diagnostics.sql_server_inventory_queries"
+    evidence_type: source_sql
+    path: "sql/diagnostics/sql_server_inventory/"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      10 ficheros .sql de diagnóstico (tables, columns, foreign_keys,
+      indexes, etc.) usados por sql_inventory.py — consistentes con las
+      categorías vistas en outputs/inventory/*/manifest.yaml.
+    confidence: high
+    status: validated
+    export_relevance: "Queries reutilizables para revalidar estructura de tablas origen antes de fijar cualquier ExportDefinition."
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # Tests automatizados (contratos de comportamiento ya bloqueados)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:test.module_analysis_contract"
+    evidence_type: automated_test
+    path: "tests/test_module_analysis.py"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      test_module_analysis_nunca_produce_ready_for_final_load_en_el_codigo
+      hard-asserta que "ActionPlanProcessingStatus.READY_FOR_FINAL_LOAD"
+      nunca aparece como código ejecutable en module_analysis.py; otro test
+      confirma que el módulo nunca escribe CSV.
+    confidence: high
+    status: validated
+    export_relevance: "Fija por prueba automatizada que ningún export puede originarse en module_analysis.py."
+    limitations: []
+
+  - evidence_id: "evidence:test.project_analysis_contract"
+    evidence_type: automated_test
+    path: "tests/test_project_analysis.py"
+    related_modules: ["ap"]
+    related_migration_objects: ["ap.Action_Plans"]
+    description: >
+      601 líneas. Confirma que finalize_action_plans() es la única función
+      que produce READY_FOR_FINAL_LOAD; que Action Plans se escribe siempre
+      último en manifest["output_files"]; que no se referencian "inputs/" ni
+      "config/modules.yaml" en project_analysis.py; que una ejecución
+      duplicada (mismo analysis_run_id) lanza FileExistsError.
+    confidence: high
+    status: validated
+    export_relevance: "El contrato de 'Action Plans siempre al final' es el precedente directo de ExportPlan.order (export_engine.md)."
+    limitations: []
+
+  - evidence_id: "evidence:test.mapping_coverage_contract"
+    evidence_type: automated_test
+    path: "tests/test_mapping_coverage.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Fija por prueba que generate_coverage_reports() produce exactamente 7
+      ficheros y que todo CSV generado empieza con BOM utf-8-sig.
+    confidence: high
+    status: validated
+    export_relevance: "utf-8-sig como convención de encoding ya probada — precedente a considerar (no obligación) para el futuro CSV Writer."
+    limitations: []
+
+  - evidence_id: "evidence:test.mapping_resolver_contract"
+    evidence_type: automated_test
+    path: "tests/test_mapping_resolver.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Confirma el defecto de lectura posicional de read_field_mapping_sheet
+      (columna G leída como "LevelNo" en vez de "CS_HistoricalOriginID") y
+      que resolve_field_mapping_sheet lo corrige vía XLOOKUP real, marcando
+      AMBIGUOUS ante duplicados en vez de resolver silenciosamente.
+    confidence: high
+    status: validated
+    export_relevance: "Explica por qué el mapping ES→XML de columnas debe resolverse por lookup, nunca por posición."
+    limitations: []
+
+  - evidence_id: "evidence:test.transformations_contract"
+    evidence_type: automated_test
+    path: "tests/test_transformations.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Confirma con datos reales titlefix('Línea 8\"-CB-002') ==
+      'Línea 8-CB-002' y case-insensitividad de resolve_rule.
+    confidence: high
+    status: validated
+    export_relevance: "Confirma comportamiento exacto de titlefix a nivel de código, más allá del hallazgo manual de CLAUDE.md."
+    limitations: []
+
+  - evidence_id: "evidence:test.knowledge_base_model_contract"
+    evidence_type: automated_test
+    path: "tests/test_knowledge_base_model.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Fija los vocabularios cerrados (DecisionType, MappingStatus,
+      LoadStatus, ActionPlanProcessingStatus, etc.) y las invariantes de
+      validate_mapping_decision_consistency /
+      validate_action_plan_buffer_consistency.
+    confidence: high
+    status: validated
+    export_relevance: "Vocabulario de estado que cualquier especificación de exportación debe reutilizar, no reinventar."
+    limitations: []
+
+  - evidence_id: "evidence:test.volumetry_contract"
+    evidence_type: automated_test
+    path: "tests/test_volumetry.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Reproduce literalmente el patrón de Hallazgo #1 (site 'Servicio
+      Prevención LA RABIDA' 40 origen / 2 real) y confirma que se emite un
+      log con el literal "HALLAZGO #1".
+    confidence: high
+    status: validated
+    export_relevance: "Confirma que el Hallazgo #1 es una comprobación de código real, no solo un hallazgo documental."
+    limitations: []
+
+  - evidence_id: "evidence:test.sql_inventory_contract"
+    evidence_type: automated_test
+    path: "tests/test_sql_inventory.py"
+    related_modules: []
+    related_migration_objects: []
+    description: "Confirma las 11 categorías de inventario y el patrón de carpeta de salida {base}/{connection}/{timestamp}/, fail-fast sin dejar carpetas parciales."
+    confidence: high
+    status: validated
+    export_relevance: "Precedente de convención de carpeta de salida para un futuro ExportPackage."
+    limitations: []
+
+  - evidence_id: "evidence:test.db_layer_contracts"
+    evidence_type: automated_test
+    path: "tests/test_db_connection.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Junto con test_db_metadata.py y test_db_query_runner.py, confirma
+      solo-lectura estricta (bloqueo de INSERT/UPDATE/DELETE/DDL,
+      max_rows_per_query, contraseña nunca en repr/str).
+    confidence: high
+    status: validated
+    export_relevance: "Confirma la restricción de solo-lectura heredada de CLAUDE.md a nivel de código, no solo de política."
+    limitations: []
+
+  - evidence_id: "evidence:test.select_parser_and_sheet_taxonomy_contract"
+    evidence_type: automated_test
+    path: "tests/test_select_parser.py"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Junto con test_sheet_taxonomy.py, fija el vocabulario de
+      SheetClassification (field_mapping, enablon_reference_catalog,
+      equivalence_table, transformation_rule, csv_preview,
+      pending_classification, source_data, exclusions_no_migrate, index) y
+      su evidence_status (confirmed/inferred/pending).
+    confidence: high
+    status: validated
+    export_relevance: "El vocabulario evidence_status ya probado (confirmed/inferred/pending) es la base directa de la taxonomía de estados de evidencia usada en este propio catálogo."
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # .env.example — solo para completar el inventario de configuración
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "evidence:config.env_example"
+    evidence_type: unknown
+    path: ".env.example"
+    related_modules: []
+    related_migration_objects: []
+    description: >
+      Plantilla de variables de entorno (SQL Prevención, SQL GCT, Enablon
+      API [ENABLON_BASE_URL, ENABLON_API_TOKEN], LOG_LEVEL, ENVIRONMENT).
+      Solo placeholders, sin valores reales.
+    confidence: high
+    status: identified
+    export_relevance: >
+      Las variables ENABLON_BASE_URL/ENABLON_API_TOKEN confirman que ya
+      existe una previsión de acceso a la API de Enablon a futuro, aunque
+      "no solicitado formalmente aún" según CLAUDE.md.
+    limitations: []
+
+  # ---------------------------------------------------------------------
+  # Decisiones funcionales aprobadas (incremento de validación de Reference /
+  # análisis profundo ETL / Action Plans cuantitativo)
+  # ---------------------------------------------------------------------
+
+  - evidence_id: "AFD-DRILLS-REFERENCE-001"
+    evidence_type: approved_functional_decision
+    path: "docs/specifications/v1.0/export/decision_packages/drills_reference_decision_package.md"
+    related_modules: ["simulacros"]
+    related_migration_objects: ["Drills"]
+    description: >
+      Regla funcional aprobada para construir el campo Reference de
+      simulacros.Drills a partir de CS_Typology, el literal fijo "HIST",
+      CS_HistoricalOriginID y StartingDate en formato dd/MM/yyyy, separados
+      por guion sin espacios: "<CS_Typology>-HIST-<CS_HistoricalOriginID>-
+      <StartingDate(dd/MM/yyyy)>" (ejemplo: PEI1-HIST-440-08/03/2010).
+      Aprobada por el consultor responsable de la migración (registrada
+      genéricamente como Functional Migration Team). Confirmada como
+      reproducible por 2 variantes de fórmula real localizadas en
+      ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx (hojas CSV_SIM_full y
+      CSV_SIM) — ver evidence/drills_reference_variant_catalog.yaml.
+    confidence: high
+    status: validated
+    export_relevance: direct
+    limitations:
+      - "El tratamiento de componentes vacíos (CS_Typology/CS_HistoricalOriginID/StartingDate nulos) no está confirmado por el consultor — permanece pending_confirmation, ver open_questions.md OQ-ETL-06."
+      - "Esta evidencia no sustituye al template oficial de importación de Enablon — resuelve la regla de construcción del campo, no certifica que Enablon acepte esta columna en una importación real (ver evidence_inventory.md §3, sin cambios)."
+      - "Una tercera hoja del mismo workbook (CSV_Generated_BCM_SIM) contiene una fórmula que NO reproduce esta regla (sin literal HIST, orden de componentes distinto) — documentada como variante descartada, no como conflicto de esta decisión."

@@ -1,0 +1,255 @@
+# Catálogo de trazabilidad SQL → ETL → mapping de entidad → CSV → Enablon
+#
+# Documental, no ejecutable. `possible_enablon_field` se deja vacío cuando
+# no hay evidencia suficiente — nunca se rellena por inferencia de nombre.
+# `trace_status` nunca es `fully_traced` si el destino Enablon no está
+# respaldado por evidencia real (CSV real observado + regla de mapeo
+# confirmada). Prioridad: simulacros.Drills.
+
+catalog_version: "1.0"
+
+traces:
+
+  # ---------------------------------------------------------------------
+  # simulacros.Drills — prioridad de este incremento
+  # ---------------------------------------------------------------------
+
+  - trace_id: "trace:simulacros.drills.cs_historicaloriginid"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "IDSimulacro"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.db_origensim"
+    etl_input_column: "IDSimulacro (columna A de DB_OrigenSim)"
+    transformation_ids: []
+    entity_mapping_ids: []
+    etl_output_column: "CS_HistoricalOriginID (columna AD de CSV_SIM/CSV_SIM_full, confirmado por lectura de cabecera completa)"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_HistoricalOriginID"
+    possible_enablon_field: "CS_HistoricalOriginID"
+    trace_status: fully_traced
+    confidence: high
+    limitations:
+      - "El campo destino se confirma tanto en la hoja de mapeo MapeoSims (fila IDSimulacro, XLOOKUP resuelto en caché a 'CS_HistoricalOriginID') como en la cabecera real de Drills-22072026-41.csv."
+    open_question_ids: []
+
+  - trace_id: "trace:simulacros.drills.cs_historicaldrillattendees"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "NombreAsistente"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.mapeo_asistentes"
+    etl_input_column: "NombreAsistente (ITP_ASIST_SIMS)"
+    transformation_ids: ["etl_transform:simulacros.textconcatenation.description_prefix_concat"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_HistoricalDrillAttendees (resuelto en Mapeo_asistentes vía XLOOKUP, Transformation From='Asis_concat')"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_HistoricalDrillAttendees"
+    possible_enablon_field: "CS_HistoricalDrillAttendees"
+    trace_status: partially_traced
+    confidence: high
+    limitations:
+      - "La regla 'Asis_concat' referenciada como Transformation From no contiene, en la muestra leída (filas 2-6), ningún DatoOrigen/DatoDestino/Parametro poblado — su lógica de concatenación real de múltiples asistentes en un solo campo no se ha podido confirmar en detalle, solo su existencia y su rol declarado."
+      - "'Lista de campos' documenta este destino con un typo distinto ('CS_HistoricalDrillAtendees', una sola 't') frente al nombre real de columna en el CSV ('CS_HistoricalDrillAttendees', doble 't') — inconsistencia de nomenclatura entre la hoja de justificación de campo nuevo y el campo realmente implementado."
+    open_question_ids: ["OQ-ETL-01"]
+
+  - trace_id: "trace:simulacros.drills.cs_historicaluserid"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "IDUsuarioUltimaModificacion"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.mapeosims"
+    etl_input_column: "IDUsuarioUltimaModificacion (columna G de DB_OrigenSim)"
+    transformation_ids: ["etl_transform:simulacros.multifielduser.historical_user_lookup"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_HistoricalUserId (MapeoSims, Adaptación='Sí', Transformation From='MultiField_User')"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_HistoricalUserId"
+    possible_enablon_field: "CS_HistoricalUserId"
+    trace_status: fully_traced
+    confidence: high
+    limitations: []
+    open_question_ids: []
+
+  - trace_id: "trace:simulacros.drills.cs_typology"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "IDTipo"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.mapeo_tipo_sim"
+    etl_input_column: "IDTipo (columna H de DB_OrigenSim)"
+    transformation_ids: ["etl_transform:simulacros.mapeotiposim.typology_two_step_lookup"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_Typology (resuelto por lookup en 2 pasos vía ITP_MAESTROS)"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_Typology"
+    possible_enablon_field: "CS_Typology"
+    trace_status: fully_traced
+    confidence: high
+    limitations:
+      - "Default 'NADA' si no hay coincidencia — no confirmado como valor válido para Enablon en importación."
+    open_question_ids: []
+
+  - trace_id: "trace:simulacros.drills.cs_letter"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "IDLetra"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.mapeo_letra"
+    etl_input_column: "IDLetra (columna W de DB_OrigenSim, vía ITP_MAESTROS)"
+    transformation_ids: ["etl_transform:simulacros.mapeoletra.letter_lookup_stale_label"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_Letter"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_Letter"
+    possible_enablon_field: "CS_Letter"
+    trace_status: fully_traced
+    confidence: high
+    limitations:
+      - "Hoja de mapeo conserva una etiqueta descriptiva sin actualizar ('Letra (Reunión de Grupo)') — no afecta el valor resuelto, solo la documentación interna de la hoja."
+    open_question_ids: []
+
+  - trace_id: "trace:simulacros.drills.cs_workflowstatus"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "Estado"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.mapeo_estado"
+    etl_input_column: "Estado (columna M de DB_OrigenSim)"
+    transformation_ids: ["etl_transform:simulacros.mapeoestado.workflow_status_lookup"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_WorkflowStatus"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_WorkflowStatus"
+    possible_enablon_field: "CS_WorkflowStatus"
+    trace_status: fully_traced
+    confidence: high
+    limitations: []
+    open_question_ids: []
+
+  - trace_id: "trace:simulacros.drills.cs_duration_fields"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "Duracion"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.calculohorasdiasminutos"
+    etl_input_column: "Duracion (columna Y de DB_OrigenSim)"
+    transformation_ids: ["etl_transform:simulacros.calculohorasdiasminutos.duration_split"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_DurationMonths / CS_DurationDays / CS_DurationHours / CS_DurationMinutes (columnas AN-AR de DB_OrigenSim, calculadas)"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_Duration"
+    possible_enablon_field: "CS_Duration"
+    trace_status: partially_traced
+    confidence: medium
+    limitations:
+      - "El CSV real de Drills tiene una única columna 'CS_Duration' (numérica), mientras el ETL calcula 4 componentes separados (Months/Days/Hours/Minutes) en DB_OrigenSim — no se ha confirmado cómo (o si) estos 4 componentes se recombinan en el valor único 'CS_Duration' del CSV final; ningún sheet leído en este incremento muestra esa recombinación explícitamente."
+    open_question_ids: ["OQ-ETL-02"]
+
+  - trace_id: "trace:simulacros.drills.reference"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "IDSimulacro (CS_HistoricalOriginID) + IDTipo (CS_Typology) + FechaHoraCombinado (StartingDate)"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.csv_sim"
+    etl_input_column: "CS_Typology (col J), CS_HistoricalOriginID (col AD), StartingDate (col K) de CSV_SIM/CSV_SIM_full"
+    transformation_ids: ["etl_transform:simulacros.mapeotitulo.titlefix_cloneorigin_reference"]
+    entity_mapping_ids: []
+    etl_output_column: "Reference (columna B en CSV_SIM/CSV_SIM_full)"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "Reference"
+    possible_enablon_field: "Reference"
+    trace_status: fully_traced
+    confidence: high
+    approved_functional_decision_id: "AFD-DRILLS-REFERENCE-001"
+    transformation_rule: "<CS_Typology>-HIST-<CS_HistoricalOriginID>-<StartingDate(dd/MM/yyyy)>"
+    limitations:
+      - "Actualizado tras el registro de AFD-DRILLS-REFERENCE-001: la regla funcional aprobada por el consultor responsable coincide exactamente con las fórmulas de CSV_SIM_full y CSV_SIM (formato Typology-HIST-OriginID-Fecha). La tercera variante observada (CSV_Generated_BCM_SIM, formato Typology-Entidad-Fecha-OriginID, SIN el literal 'HIST') se confirma como residual_rule_candidate, descartada — ver evidence/drills_reference_variant_catalog.yaml."
+      - "El tratamiento de componentes vacíos (CS_Typology/CS_HistoricalOriginID/StartingDate nulos) no está confirmado por el consultor — ver OQ-ETL-06, no afecta la clasificación fully_traced de esta traza porque el criterio exigido (fuente + transformación + columna de salida + relación con la decisión aprobada) SÍ está cubierto."
+    open_question_ids: ["OQ-ETL-05", "OQ-ETL-06"]
+
+  - trace_id: "trace:simulacros.drills.entity_field"
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    sql_evidence_id: "evidence:sql_source.simulacros_folder"
+    sql_field: "IDUnidadOrg (no IDCentro — confirmado sin destino en MapeoSims)"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    etl_sheet_id: "etl_sheet:simulacros.db_origensim"
+    etl_input_column: "IDUnidadOrg (columna T de DB_OrigenSim) -> RutaEnablon (columna U, XLOOKUP contra tabla Entidades_Enablon_ITP)"
+    transformation_ids: []
+    entity_mapping_ids: ["entity_mapping:itp_primer_eje.mapeo_eje_final_modificado"]
+    etl_output_column: "RutaEnablon (columna U de DB_OrigenSim), mapeada directamente en MapeoSims fila 44 a CS_ImpactedEntities"
+    csv_evidence_id: "evidence:csv_enablon.drills"
+    csv_column: "CS_ImpactedEntities"
+    possible_enablon_field: "CS_ImpactedEntities"
+    trace_status: fully_traced
+    confidence: high
+    limitations:
+      - "Localizado en DB_OrigenSim (tabla de origen), NO en MapeoSims (hoja de mapeo de campo) — MapeoSims solo recibe RutaEnablon ya resuelto y lo pasa directo a CS_ImpactedEntities sin fórmula adicional. Ver object_assessments/drills_entity_resolution_assessment.md para el detalle completo."
+      - "El mecanismo usa la tabla Entidades_Enablon_ITP (681 filas, = catálogo antiguo deprecado Entidades_Mapeo), NO el catálogo resuelto validado (catalogo_resuelto_code_ruta_site.csv) — ya aceptado explícitamente como correcto para Simulacros en config/modules.yaml:84, por eso NO se marca como conflicto."
+      - "El mismo mecanismo (misma tabla, mismas 2 fórmulas XLOOKUP) se confirmó también en bypass, eventos_antiguos, ops y safety_meetings — sin una nota equivalente a config/modules.yaml:84 que confirme si es igualmente aceptable para esos 4 objetos (ver OQ-ENT-04)."
+    open_question_ids: ["OQ-ENT-04"]
+
+  # ---------------------------------------------------------------------
+  # ap.Action_Plans — evidencia nueva sobre CS_HistoricalAPID (Tarea 8)
+  # ---------------------------------------------------------------------
+
+  - trace_id: "trace:ap.action_plans.cs_historicalapid"
+    related_module: "ap"
+    related_migration_object: "ap.Action_Plans"
+    sql_evidence_id: "evidence:sql_source.ap_acciones_correctoras"
+    sql_field: "IDAccionCorrectora"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:ap.con_ajuste_entidad_new_sietcan"
+    etl_sheet_id: null
+    etl_input_column: "IDAccionCorrectora"
+    transformation_ids: ["etl_transform:ap.map_updatedate.historical_apid_key"]
+    entity_mapping_ids: []
+    etl_output_column: "CS_HistoricalAPID (declarado en Index como clave de Update, motor de 'MAP-updatedate' no leído en detalle)"
+    csv_evidence_id: "evidence:csv_enablon.action_plans"
+    csv_column: "CS_HistoricalAPID"
+    possible_enablon_field: "CS_HistoricalAPID"
+    trace_status: partially_traced
+    confidence: high
+    limitations:
+      - "Confirma que CS_HistoricalAPID (identidad propia del Action Plan, vía IDAccionCorrectora) es DISTINTO de CS_HistoricalOriginID (referencia al registro padre en el módulo de origen, vía IDSimulacro/IDEvento/etc. según el módulo). Ambos campos existen como columnas separadas en Action Plans-20072026-41.csv — ver action_plans_assessment.md Tarea 8."
+      - "No se ha leído en detalle la hoja 'MAP-updatedate' — el mecanismo exacto de generación del valor no está confirmado, solo la declaración de la clave en el Index."
+    open_question_ids: ["OQ-AP-02"]
+
+  - trace_id: "trace:eventos.impacts.duplicate_update_key_variants"
+    related_module: "eventos"
+    related_migration_object: "eventos.Impacts"
+    sql_evidence_id: "evidence:sql_source.eventos_full_join"
+    sql_field: "IdImpactoGenerado / IdImpactoGenerado2 / StandardPersonalImpactKey (3 variantes distintas confirmadas)"
+    sql_alias: null
+    etl_workbook_id: "etl_workbook:eventos.antiguos_filtroeje_sitepesr"
+    etl_sheet_id: null
+    etl_input_column: "IdImpactoGenerado / IdImpactoGenerado2 / StandardPersonalImpactKey"
+    transformation_ids: []
+    entity_mapping_ids: []
+    etl_output_column: "CS_HistImpactID / CS_HistImpactIDOH (dos campos destino distintos confirmados por el propio Index del ETL)"
+    csv_evidence_id: "evidence:csv_enablon.impacts"
+    csv_column: ""
+    possible_enablon_field: ""
+    trace_status: ambiguous
+    confidence: medium
+    limitations:
+      - "El Index del workbook confirma DOS claves de actualización distintas para Impacts según el paso del pipeline: IdImpactoGenerado2↔CS_HistImpactIDOH (fila 5) y StandardPersonalImpactKey↔CS_HistImpactID (fila 7) e IdImpactoGenerado↔CS_HistImpactID (fila 11 del workbook de Eventos Nuevos) — tres nombres de columna origen distintos apuntando a dos campos destino distintos, dentro del mismo objeto Impacts. Esto resuelve PARCIALMENTE la pregunta OQ-OBJ-03 del incremento anterior (confirma que ambos nombres de campo destino SÍ existen y se usan, con reglas de generación distintas) pero no confirma cuál de las claves origen es la 'correcta' o si ambas coexisten intencionalmente por fase del pipeline."
+    open_question_ids: ["OQ-OBJ-03"]

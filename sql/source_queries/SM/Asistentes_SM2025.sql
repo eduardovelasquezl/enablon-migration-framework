@@ -1,0 +1,7 @@
+SELECT  [IDAsistente]
+      ,[IDReunionGrupo]
+      ,[IDUsuario]
+      ,[Nombre]
+      ,[IDEmpresaContratista]
+      ,[Externo]
+  FROM [Prevencion].[dbo].[ITP_ASISTENTES_RG]

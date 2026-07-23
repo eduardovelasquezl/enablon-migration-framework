@@ -1,0 +1,579 @@
+# Catálogo de workbooks ETL — Bloque1_ETL/
+#
+# Documental, no ejecutable. Producto del análisis en modo solo lectura de
+# los 10 workbooks de inputs/_incoming_claude_web/Bloque1_ETL/ (ver
+# etl_evidence_assessment.md para el método y las limitaciones completas).
+# Ningún archivo original fue modificado, recalculado, guardado ni
+# macro-ejecutado. Prioridad analítica: ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx
+# (simulacros.Drills), analizado en profundidad; el resto, analizado
+# estructuralmente y mediante su propia hoja "Index" autodescriptiva.
+#
+# No se han copiado a este catálogo valores de columnas con datos
+# personales (nombres de empleados, emails, teléfonos) — donde aparecen en
+# el workbook, se referencian solo por nombre de columna y recuento de
+# filas, nunca por valor.
+#
+# Actualización (incremento de validación de Reference / análisis profundo
+# ETL / Action Plans cuantitativo): se profundizó más allá de la hoja
+# Index en 3 hojas representativas de cada uno de los 9 workbooks restantes
+# (27 hojas adicionales) — ver etl_deep_analysis.md para el detalle
+# completo. Los 9 workbooks permanecen `partially_reviewed` (siguen sin
+# lectura exhaustiva fila a fila) pero con mayor profundidad de evidencia
+# que en el incremento anterior. Se añaden nuevas entradas en
+# `transformations` con los hallazgos cruzados entre workbooks (mecanismo
+# de resolución de entidad repetido, reglas confirmadas por comentario del
+# autor, convención "//"). Ver también evidence/etl_sheet_catalog.yaml
+# (taxonomía completa de las 655 hojas de los 10 workbooks).
+
+catalog_version: "1.0"
+
+workbooks:
+
+  - workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx"
+    related_module: "simulacros"
+    related_migration_objects: ["simulacros.Drills", "simulacros.List_of_Activities"]
+    sheets: 49
+    formulas_present: true
+    external_links_present: false
+    queries_present: true
+    macros_present: false
+    confidence: high
+    status: validated
+    limitations:
+      - "Analizado en profundidad (prioridad de este incremento) pero solo sobre una muestra de filas por hoja (cabecera + 2-8 filas), no fila a fila completa (12302 filas máx. en las hojas de mayor volumen)."
+      - "ITP_USUARIOS (5240 filas) y ITP_ASIST_SIMS/_EXT (21956 filas c/u) contienen nombres reales y correos corporativos — tratados como PII, no reproducidos en documentación."
+      - "'CamposXmlBES_SIMS_exportado' contiene datos de PRUEBA (valores 'test', 'TEST - Please Ignore') en sus filas de ejemplo, no producción real — no debe confundirse con una muestra de datos reales de Drills."
+
+  - workbook_id: "etl_workbook:moc.m_new_sitecan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_MOC_m_NEW_SITECAN.xlsm"
+    related_module: "moc"
+    related_migration_objects: ["moc.Change_Register"]
+    sheets: 65
+    formulas_present: true
+    external_links_present: false
+    queries_present: true
+    macros_present: true
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Único workbook con vbaProject.bin presente (Excel siempre lo incluye en .xlsm). No se ha abierto ni ejecutado el proyecto VBA en este incremento (regla dura: no ejecutar macros) — la afirmación de CLAUDE.md de que el VBA está '100% vacío' proviene de un análisis manual previo, no reverificado aquí."
+      - "Solo se leyó la hoja 'Index' (autodescriptiva) y el listado estructural de hojas; no se analizaron en profundidad las 9 hojas Mapeo_MOC_*/Mapeo_RiskAss*."
+      - "Index confirma en texto libre: 'estamos aún averiguando como generar los risk assesment porque las metodologias son dificiles de asignar' (fila 11) — admisión explícita de trabajo inconcluso por el propio autor del ETL."
+
+  - workbook_id: "etl_workbook:ap.gct_new_sitecan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- AP_GCT_NEW_SITECAN.xlsx"
+    related_module: "ap"
+    related_migration_objects: ["ap.Action_Plans"]
+    sheets: 51
+    formulas_present: true
+    external_links_present: true
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Solo se leyó la hoja 'Index'. Confirma clave de actualización Update(IDAccionCorrectora,CS_HistoricalAPID) — distinta de CS_HistoricalOriginID, ver traceability_catalog.yaml y action_plans_assessment.md."
+      - "Fila 5 del Index: Desc='Nunca' para CT_ACCIONES_CT -> CSV_AP_MOC2, pero Crear?='sí' y Log='✅'/'OK' — inconsistencia interna no resuelta (ver etl_evidence_assessment.md §Conflictos)."
+      - "1 external link (xl/externalLinks/externalLink1.xml) no resuelto — puede apuntar a un archivo externo no presente en este repositorio."
+
+  - workbook_id: "etl_workbook:ap.con_ajuste_entidad_new_sietcan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- AP-Con Ajuste Entidad_NEW_SIETCAN.xlsx"
+    related_module: "ap"
+    related_migration_objects: ["ap.Action_Plans"]
+    sheets: 72
+    formulas_present: true
+    external_links_present: true
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "El workbook más pesado del proyecto (342MB). Solo se leyó la hoja 'Index'."
+      - "Confirma el mismo patrón Update(IDAccionCorrectora,CS_HistoricalAPID) para los 7 módulos de origen (EV_new, EV_old, IPS, SIMS, OPS, SM, OTROS, HAZ), todos vía la misma hoja de mapeo 'MAP-AP' y la misma hoja de actualización 'MAP-updatedate'."
+      - "1 external link no resuelto."
+
+  - workbook_id: "etl_workbook:eventos.antiguos_filtroeje_sitepesr"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL - Eventos Antiguos_FiltroEje_SITEPESR.xlsx"
+    related_module: "eventos"
+    related_migration_objects: ["eventos.Events", "eventos.Impacts", "eventos.Investigations"]
+    sheets: 74
+    formulas_present: true
+    external_links_present: false
+    queries_present: false
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Solo se leyó la hoja 'Index'. Confirma claves de actualización por objeto: IDadaptado↔CS_HistoricalEventID (Events), IdImpactoGenerado2↔CS_HistImpactIDOH e IdImpactoGenerado(2)/StandardPersonalImpactKey↔CS_HistImpactID (Impacts, dos variantes distintas confirmadas), IDadaptado↔CS_HistoricalExtenalId (Investigations)."
+      - "Fila 9 y fila 15 del Index muestran claves de actualización con prefijo '//' (//infMed) — patrón de referencia de columna no resuelta por el proceso que genera este log, repetido también en el workbook de Eventos Nuevos (ver etl_evidence_assessment.md §Conflictos)."
+      - "4 hojas ocultas MAP-ITPOLD-EVT/IMP/MED/MED-2 confirmadas presentes pero no usadas en ningún paso del Index — coincide con el patrón de 7/7 libros ya documentado en CLAUDE.md."
+
+  - workbook_id: "etl_workbook:eventos.nuevos_full_ajusteeje_sitepser"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- Eventos nuevos - FULL_AjusteEje_SITEPSER.xlsx"
+    related_module: "eventos"
+    related_migration_objects: ["eventos.Events", "eventos.Impacts", "eventos.Investigations", "eventos.PSM_Forms"]
+    sheets: 105
+    formulas_present: true
+    external_links_present: true
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Solo se leyó la hoja 'Index' (25 filas activas, el más largo pipeline documentado — 14 pasos create/update, coincide con 'pipeline de ~14-24 pasos' de config/modules.yaml:194-199)."
+      - "Confirma que PSM Forms se crea desde DB-ITP-EVT-03-inv (misma tabla que Investigations fase 3) vía MAP-PSM-FORMS_Create, y sus respuestas desde DB-ITP-PSM vía MAP-PSM-FORMS_CreateAns — evidencia nueva de que PSM Forms comparte fuente con Investigations dentro de este mismo workbook, no confirma la ambigüedad de sql/source_queries/PSM/ como carpeta propia (ver OQ-GLOBAL-01, sin cambios)."
+      - "2 external links no resueltos."
+
+  - workbook_id: "etl_workbook:inspecciones.new_version_formulas_sietcan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- InspeccionesNEW (version formulas)_SIETCAN.xlsx"
+    related_module: "inspecciones"
+    related_migration_objects: ["inspecciones.Inspections", "inspecciones.Observations", "inspecciones.Inspection_Data"]
+    sheets: 84
+    formulas_present: true
+    external_links_present: false
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Solo se leyó la hoja 'Index'. Fila 2 contiene una advertencia explícita del propio autor: 'IMPORTANTE: DESACTIVAR CALCULO AUTOMATICO DE FORMULAS ANTES DE ACTUALIZAR DATASET O GENERAR VALORES' — confirma, con evidencia textual directa, por qué la Tarea 2 de este incremento exige no recalcular fórmulas: el propio autor original ya identificó ese riesgo."
+      - "Referencia URLs de un entorno Enablon de desarrollo (dominio 'cepsacorp-dev.ps.enablon.io') en el Log de dos filas — no reproducidas completas en esta documentación por prudencia, solo el dominio."
+      - "Nombre de archivo 'version formulas' sugiere que existe (o existió) una variante sin fórmulas — no localizada en este repositorio."
+
+  - workbook_id: "etl_workbook:reuniones.degrupo_fixentities_sitecan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL- reunionesdegrupo-fixEntities_SITECAN.xlsx"
+    related_module: "safety_meetings"
+    related_migration_objects: ["safety_meetings.Group_Meetings", "safety_meetings.Update_External_Meeting_Participations"]
+    sheets: 39
+    formulas_present: true
+    external_links_present: false
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Solo se leyó la hoja 'Index'. Confirma ITP-SM-DBC -> MAP-SM -> CSV_SM_FULL (Group Meetings) e ITP_ASISTENTES_RG -> MAP-Asist -> CSV_Asistentes_FULL (candidato a Update External Meeting Participations, primera confirmación estructural de esta hipótesis, antes solo inferida por nombre de archivo SQL — sigue sin clave de correlación documentada)."
+      - "Filas 6-7 del Index contienen URLs completas de administración de Enablon UAT (dominio 'moeve-az.uat.eu.enablon.io') con parámetros de query — no reproducidas completas en esta documentación."
+
+  - workbook_id: "etl_workbook:bypass.ajusteentidad_new_sitecan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_Bypass_AjusteEntidadNEW_SITECAN.xlsx"
+    related_module: "bypass"
+    related_migration_objects: ["bypass.By_Passes"]
+    sheets: 31
+    formulas_present: true
+    external_links_present: false
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: partially_reviewed
+    limitations:
+      - "Solo se leyó la hoja 'Index' (3 filas). Fila 2 documenta en texto libre: 'Los archivos adjuntos los ponemos como texto, hay que reclamar un nuevo...' (truncado) — sugiere una limitación conocida de adjuntos, no completada en la muestra leída."
+      - "Confirma existencia de la hoja 'CharacterFix' (patrón titlefix, igual que en Simulacros) también en este workbook — ver etl_evidence_assessment.md."
+      - "Salida a dos CSV distintos (CSV_BES_ALL y CSV_CenCAN_BES) desde la misma fuente/mapeo — no confirmada la diferencia funcional entre ambos en este incremento."
+
+  - workbook_id: "etl_workbook:ops.arreglo_entidad_sietcan"
+    path: "inputs/_incoming_claude_web/Bloque1_ETL/ETL_OPS_ArregloEntidad_SIETCAN.xlsx"
+    related_module: "ops"
+    related_migration_objects: ["ops.JSO"]
+    sheets: 60
+    formulas_present: true
+    external_links_present: false
+    queries_present: true
+    macros_present: false
+    confidence: medium
+    status: conflicting
+    limitations:
+      - "Solo se leyó la hoja 'Index'. Confirma clave de actualización IdOpsAdaptado/IdOps↔CS_HistoricalOriginID (JSO SÍ usa CS_HistoricalOriginID como clave propia, a diferencia de Action Plans que usa CS_HistoricalAPID)."
+      - "Fila 5 del Index registra un ERROR explícito generado por el propio proceso: 'Update: columna origen no encontrada (IdOpsAdaptado) (1)' — evidencia directa y textual de una referencia rota, no inferida (ver etl_evidence_assessment.md §Conflictos)."
+      - "Fila 2 tiene columnas Crear?/Log vacías (None) mientras Debug='OK' — registro de log incompleto/inconsistente."
+
+  - workbook_id: "etl_workbook:entity.gct_uorg_match"
+    path: "inputs/_incoming_claude_web/Bloque3_Mappings_Entidades/260311 Mapeo gct Enablon-Match UORG ENTIDAD (1).xlsx"
+    related_module: "moc"
+    related_migration_objects: ["moc.Change_Register"]
+    sheets: 5
+    formulas_present: true
+    external_links_present: false
+    queries_present: false
+    macros_present: false
+    confidence: high
+    status: validated
+    limitations:
+      - "Ver entity_mapping_catalog.yaml para el detalle fila a fila — este catálogo lo referencia también aquí porque su naturaleza (mapeo de entidad GCT) es ETL de soporte, no un ETL de módulo funcional en sí."
+
+  - workbook_id: "etl_workbook:entity.itp_primer_eje"
+    path: "inputs/_incoming_claude_web/Bloque3_Mappings_Entidades/Mapeo ITP primer eje enablon_revisado _final1 (version 4).xlsx"
+    related_module: null
+    related_migration_objects: []
+    sheets: 15
+    formulas_present: true
+    external_links_present: true
+    queries_present: false
+    macros_present: false
+    confidence: high
+    status: validated
+    limitations:
+      - "Relacionado con todos los módulos del sistema ITP (Simulacros, Safety Meetings, Eventos, OPS, Inspecciones) por resolver el eje de entidad compartido, no con uno solo — related_module se deja null a nivel de workbook; ver entity_mapping_catalog.yaml para el detalle por hoja/site."
+      - "1 external link no resuelto (posible referencia a otro archivo de mapeo no incluido en este repositorio)."
+
+  # ---------------------------------------------------------------------
+  # Transformaciones confirmadas — prioridad Simulacros/Drills, con una
+  # muestra representativa del resto de módulos para no ignorarlos.
+  # ---------------------------------------------------------------------
+
+transformations:
+
+  - transformation_id: "etl_transform:simulacros.calculohorasdiasminutos.duration_split"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.calculohorasdiasminutos"
+    source_columns: ["Duracion"]
+    target_column: "CS_DurationMonths / CS_DurationDays / CS_DurationHours / CS_DurationMinutes"
+    formula: >
+      CS_DurationMonths =INT(NUMBERVALUE(C2)/(24*30));
+      CS_DurationDays =INT(MOD(NUMBERVALUE(C2),24*30)/24);
+      CS_DurationHours =INT(MOD(NUMBERVALUE(C2),24));
+      CS_DurationMinutes =MROUND(INT(MOD(NUMBERVALUE(C2),1)*60),5)
+    transformation_type: "conversión numérica + redondeo"
+    description: >
+      Descompone una duración numérica en meses/días/horas/minutos asumiendo
+      un mes fijo de 30 días (INT(.../(24*30))) y redondeando los minutos al
+      múltiplo de 5 más cercano (MROUND(...,5)). Confirma con evidencia de
+      fórmula, no solo de dato, el defecto ya documentado en
+      config/modules.yaml:88 ("redondeo a múltiplos de 5 min, mes fijo de 30
+      días — pérdida de precisión confirmada").
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: ["evidence:config.modules_yaml"]
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.charfix.titlefix_wildcard"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.characterfix"
+    source_columns: ["*"]
+    target_column: null
+    formula: "DatoOrigen=* | DatoDestino=(vacío) | EsCondicion=Sí | ReglaEspecial=titlefix | Parametro=(vacío)"
+    transformation_type: "regla de caracteres (patrón DatoOrigen/DatoDestino/EsCondicion/ReglaEspecial/Parametro)"
+    description: >
+      Aplica la regla 'titlefix' de forma condicional (EsCondicion=Sí) a
+      TODOS los campos de texto ('*'), no a un campo específico. Confirma
+      que titlefix no es exclusivo de MOC — la misma hoja "CharacterFix"
+      con la misma regla existe también en el workbook de Bypass y en el de
+      OPS (confirmado por listado de hojas). Sigue sin identificarse el
+      motor/proceso que ejecuta 'titlefix' en la práctica (ver
+      OQ-GLOBAL-02, ahora aplicable a más de un módulo, no solo MOC).
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: ["OQ-GLOBAL-02"]
+
+  - transformation_id: "etl_transform:simulacros.mapeotitulo.titlefix_cloneorigin_reference"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.mapeo_titulo"
+    source_columns: ["Titulo (implícito, no una columna SQL directa)"]
+    target_column: "NameEN / NameFR / NameES / NameZH / NameBR / Reference"
+    formula: >
+      Fila2: ReglaEspecial=Titlefix sobre NameEN; NameFR/ES/ZH/BR=cloneorigin
+      (fan-out); Reference=$=CONCATENAR(INDICE(J:J;FILA());"-";"HIST";"-";INDICE(AD:AD;FILA());"-";TEXTO(INDICE(K:K;FILA());"dd/mm/aaaa")).
+      Fila3: DatoOrigen=NULL, ReglaEspecial=nullcontrol, Parametro="No name
+      defined in historical data".
+    transformation_type: "titlefix + cloneorigin (fan-out 5 idiomas, solo 4 aplicados aquí) + concatenación + nullcontrol"
+    description: >
+      Confirma el patrón de fan-out `cloneorigin` documentado en CLAUDE.md
+      aplicado a NameFR/ES/ZH/BR desde NameEN, con `Titlefix` aplicado antes
+      del clonado y un valor de reserva ('No name defined in historical
+      data') para nombres nulos. La fórmula de 'Reference' referencia
+      columnas del PROPIO sheet de salida (J, K, AD), no columnas del SQL
+      origen directamente — ver limitations.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    limitations:
+      - "La fórmula de Reference varía entre hojas de salida sucesivas del mismo workbook (CSV_SIM_full, CSV_SIM, CSV_Generated_BCM_SIM, Export sim UAT) — ver traceability_catalog.yaml, trace_status=ambiguous para este campo específico."
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.mapeoestado.workflow_status_lookup"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.mapeo_estado"
+    source_columns: ["Estado"]
+    target_column: "CS_WorkflowStatus"
+    formula: "Lookup simple 1:1 (sin fórmula, tabla estática): Terminado→Validated, En Curso→Pending validation, Iniciado→Draft, Aprobado→Validated"
+    transformation_type: "lookup_simple"
+    description: >
+      Traduce el estado de origen (español) al valor de workflow status de
+      Enablon. Nótese que 'Terminado' y 'Aprobado' colapsan al mismo
+      destino ('Validated') — no es una relación 1:1 estricta sino
+      muchos-a-uno.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.mapeoestado_al.activity_status_lookup"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.mapeo_estado_al"
+    source_columns: ["Estado"]
+    target_column: "Status (List of Activities)"
+    formula: "Lookup simple 1:1: Terminado→Completed, En Curso→In Progress, Iniciado→In Progress, Aprobado→Not Started"
+    transformation_type: "lookup_simple"
+    description: >
+      Traduce el MISMO campo origen ('Estado') que 'Mapeo_Estado', pero a un
+      vocabulario de destino DISTINTO y con una correspondencia diferente
+      (p. ej. 'Aprobado'→'Not Started' aquí, frente a 'Aprobado'→'Validated'
+      en Mapeo_Estado). No se ha confirmado si esta diferencia es una
+      decisión funcional deliberada (Drills y List of Activities son
+      objetos Enablon distintos, con vocabularios de estado distintos) o un
+      defecto de copia — clasificado como conflicting hasta confirmación.
+    confidence: medium
+    evidence_status: conflicting
+    related_evidence_ids: []
+    open_question_ids: ["OQ-OBJ-07"]
+
+  - transformation_id: "etl_transform:simulacros.mapeotiposim.typology_two_step_lookup"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.mapeo_tipo_sim"
+    source_columns: ["IDTipo"]
+    target_column: "CS_Typology"
+    formula: >
+      Paso 1: =_xlfn.XLOOKUP(A2,ITP_MAESTROS[IDMaestro],ITP_MAESTROS[Descripcion],"",0,1)
+      (resuelve descripción vía tabla estructurada ITP_MAESTROS). Paso 2:
+      =_xlfn.XLOOKUP(E2,I:I,F:F,"NADA",0,1) (resuelve código Enablon final,
+      default "NADA" si no hay match).
+    transformation_type: "lookup dinámico en 2 pasos"
+    description: >
+      Confirma con fórmula real el patrón "Lookup dinámico en 2 pasos"
+      descrito en CLAUDE.md como preferible al lookup estático. Resuelve
+      valores como PEI, PEI1, PEI2, PEISEG, GEN, EVA, INTT — visibles
+      también en las cabeceras reales de Drills.csv (campo CS_Typology).
+      Default explícito "NADA" (literal en español) cuando no hay
+      coincidencia — no documentado en ningún otro lugar como valor
+      esperado por Enablon.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: ["evidence:csv_enablon.drills"]
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.mapeoletra.letter_lookup_stale_label"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.mapeo_letra"
+    source_columns: ["IDMaestro (vía ITP_MAESTROS)"]
+    target_column: "CS_Letter"
+    formula: "Lookup estático 1:1 por código de maestro -> letra (A,B,C,D,E,J.O.,F)"
+    transformation_type: "lookup_simple"
+    description: >
+      La columna descriptiva 'InfoIgnore-Nombre' de esta hoja contiene
+      literalmente el texto 'Letra (Reunión de Grupo)' — es decir, la
+      etiqueta descriptiva no se actualizó al copiar esta hoja desde el ETL
+      de Safety Meetings ('Reunión de Grupo') al de Simulacros. Evidencia
+      textual directa y localizada del patrón ya documentado en CLAUDE.md
+      ("todos los ETL nuevos se construyen copiando el libro de un módulo
+      anterior sin limpiar").
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.nullcontrolexception.default_text"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.nullcontrolexception"
+    source_columns: ["NULL (cualquier campo)"]
+    target_column: null
+    formula: "DatoOrigen=NULL | ReglaEspecial=nullcontrol | Parametro='Not specified in Migration Data Origin'"
+    transformation_type: "nullcontrol"
+    description: "Valor de reserva genérico para campos NULL sin regla más específica — texto literal en inglés."
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.multifielduser.historical_user_lookup"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.multifield_user"
+    source_columns: ["IDUsuarioUltimaModificacion (vía ITP_USUARIOS)"]
+    target_column: "CS_HistoricalUserId / CS_HistoricalUserName / CS_HistoricalDataOrigin"
+    formula: "Lookup por IDUsuario contra ITP_USUARIOS (Nombre, CorreoElectronico); CS_HistoricalDataOrigin fijo literal 'Prevención.ITP_SIM+ITP_SIM_ACCIONES_CORRECTORAS'"
+    transformation_type: "lookup + literal fijo"
+    description: >
+      Confirma el literal exacto escrito en CS_HistoricalDataOrigin para
+      Simulacros: 'Prevención.ITP_SIM+ITP_SIM_ACCIONES_CORRECTORAS' (con
+      tilde correcta). Referenciado desde MapeoSims como
+      'Transformation From: MultiField_User' para el campo
+      IDUsuarioUltimaModificacion → CS_HistoricalUserId.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    limitations:
+      - "ITP_USUARIOS contiene nombre real y correo corporativo por usuario — no reproducido en esta documentación (PII)."
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:simulacros.textconcatenation.description_prefix_concat"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.text_concatenation"
+    source_columns: ["BreveDescripcion", "HipotesisAccidental"]
+    target_column: "DescriptionEN (+ fan-out FR/ES/ZH/BR vía cloneorigin)"
+    formula: >
+      concat con prefijo literal: BreveDescripcion -> 'Breve Descripción: ' +
+      valor; HipotesisAccidental -> 'Hipótesis del Accidente: ' + valor.
+    transformation_type: "concat + cloneorigin"
+    description: >
+      Confirma con datos reales el patrón 'concat' con prefijo de etiqueta
+      fija en español, seguido de fan-out a los 4 idiomas adicionales vía
+      cloneorigin — visible en el CSV real (columna DescriptionEN de
+      List of Activities-*.csv contiene literalmente estos prefijos).
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: ["evidence:csv_enablon.list_of_activities"]
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:ap.map_updatedate.historical_apid_key"
+    workbook_id: "etl_workbook:ap.con_ajuste_entidad_new_sietcan"
+    sheet_id: null
+    source_columns: ["IDAccionCorrectora"]
+    target_column: "CS_HistoricalAPID"
+    formula: "Update(IDAccionCorrectora,CS_HistoricalAPID) — declarado en la hoja Index, motor de la hoja 'MAP-updatedate' no leído en detalle"
+    transformation_type: "clave de actualización (correlation key)"
+    description: >
+      CONFIRMA que Action Plans usa una clave de correlación PROPIA
+      (CS_HistoricalAPID, derivada de IDAccionCorrectora) para su propio
+      dedup/update, DISTINTA de CS_HistoricalOriginID (que en este objeto
+      representa la referencia al registro PADRE en el módulo de origen,
+      no la identidad propia del Action Plan). Ver action_plans_assessment.md
+      Tarea 8 y traceability_catalog.yaml para el detalle.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: ["evidence:csv_enablon.action_plans", "evidence:sql_source.ap_acciones_correctoras"]
+    open_question_ids: ["OQ-AP-02"]
+
+  - transformation_id: "etl_transform:ops.checklist_update.broken_reference"
+    workbook_id: "etl_workbook:ops.arreglo_entidad_sietcan"
+    sheet_id: null
+    source_columns: ["IdOpsAdaptado"]
+    target_column: "CS_HistoricalOriginID"
+    formula: "Log del propio ETL: 'Update: columna origen no encontrada (IdOpsAdaptado) (1)'"
+    transformation_type: "referencia rota (confirmada por el propio log del ETL)"
+    description: >
+      El propio proceso que genera la hoja Index registró un error de
+      columna origen no encontrada para este paso de actualización — no es
+      una inferencia de este análisis, es un mensaje de error ya presente
+      en el archivo original.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: ["OQ-MOD-04"]
+
+  # --- Hallazgos transversales del análisis profundo (27 hojas, 9 workbooks
+  # no-Simulacros) — ver etl_deep_analysis.md para el detalle completo de
+  # cada uno. Ninguno de estos hallazgos sustituye la necesidad de lectura
+  # exhaustiva pendiente; son patrones observados de forma repetida y
+  # documentados como tal, no generalizaciones no verificadas.
+
+  - transformation_id: "etl_transform:crosscutting.rutaenablon_entidades_mapeo_lookup"
+    workbook_id: null
+    sheet_id: null
+    source_columns: ["IDUnidadOrg", "IDCentro"]
+    target_column: "CS_ImpactedEntities (o equivalente por objeto)"
+    formula: >
+      IF(IDUnidadOrg<>"", XLOOKUP(IDUnidadOrg, Entidades_Enablon_ITP[IDUnidadOrg],
+      Entidades_Enablon_ITP[RutaSimple|Ruta1]), "") seguido de un segundo
+      XLOOKUP(RutaEnablon, Entidades_Enablon_ITP[RutaSimple|Ruta1],
+      Entidades_Enablon_ITP[ENABLON]) — mecanismo de 2 pasos código→ruta,
+      ruta→nombre Enablon.
+    transformation_type: "resolución de entidad (lookup dinámico en 2 pasos)"
+    description: >
+      El mismo mecanismo de 2 pasos ya documentado en profundidad para
+      simulacros.Drills (ver object_assessments/drills_entity_resolution_assessment.md)
+      se encontró de forma IDÉNTICA — misma tabla estructurada
+      Entidades_Enablon_ITP, mismo patrón XLOOKUP encadenado — en las hojas
+      de mapeo revisadas de bypass, eventos_antiguos, ops y reuniones de
+      grupo (safety_meetings). La tabla Entidades_Enablon_ITP es, por
+      estructura (17 columnas, 681 filas), el mismo catálogo deprecado
+      Entidades_Mapeo que CLAUDE.md indica no usar como fuente de verdad.
+      Para simulacros.Drills este uso ya está aceptado explícitamente
+      (config/modules.yaml:84); para bypass/eventos_antiguos/ops/reuniones
+      NO se ha localizado una nota de aceptación equivalente.
+    confidence: high
+    evidence_status: conflicting
+    related_evidence_ids: ["evidence:entity_catalog.first_axis"]
+    open_question_ids: ["OQ-ENT-04"]
+
+  - transformation_id: "etl_transform:ops.congratulated_worker.author_comment_rule"
+    workbook_id: "etl_workbook:ops.arreglo_entidad_sietcan"
+    sheet_id: null
+    source_columns: ["(campo origen de felicitación/reconocimiento, ver comentario)"]
+    target_column: "CS_CongratulatedWorker"
+    formula: "Regla descrita en comentario de celda del propio autor del ETL (no fórmula ejecutable)"
+    transformation_type: "regla de negocio confirmada por comentario del autor"
+    description: >
+      El propio autor del ETL dejó un comentario de celda explicando el
+      criterio de negocio para poblar CS_CongratulatedWorker — se trata de
+      evidencia directa de intención del autor, no de una inferencia de
+      este análisis. Ver etl_deep_analysis.md §3 para el texto completo del
+      comentario y su ubicación exacta.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:crosscutting.double_slash_prefix_convention"
+    workbook_id: null
+    sheet_id: null
+    source_columns: []
+    target_column: "(diversos, columnas con prefijo '//' en el nombre)"
+    formula: null
+    transformation_type: "convención de nomenclatura del autor (no técnica)"
+    description: >
+      El prefijo "//" observado en nombres de columna de hojas de mapeo de
+      Eventos (antiguos y nuevos), MOC y Reuniones de Grupo (safety_meetings),
+      así como en hojas CSV internas de trabajo, se reinterpreta en este
+      incremento como una marca propia del autor para señalar "nombre de
+      campo Enablon aún no confirmado / provisional" — no como un error
+      técnico ni un artefacto de exportación. Esta reinterpretación se basa
+      en la consistencia del patrón entre 4 workbooks distintos, no en
+      confirmación directa del autor — se mantiene como `inferred`, no como
+      `confirmed`. En MOC, además, persiste al menos 1 columna con este
+      prefijo cuyo mapeo final no pudo determinarse en la muestra leída
+      (ver etl_deep_analysis.md §4).
+    confidence: medium
+    evidence_status: identified
+    related_evidence_ids: []
+    open_question_ids: ["OQ-ETL-05"]
+
+  - transformation_id: "etl_transform:ops.csv_opsold_full.row_order_dependent_formula"
+    workbook_id: "etl_workbook:ops.arreglo_entidad_sietcan"
+    sheet_id: null
+    source_columns: []
+    target_column: "(columna de salida indexada por posición de fila)"
+    formula: "INDEX(columna, ROW()) / INDICE(columna;FILA()) — referencia por posición, no por clave"
+    transformation_type: "fórmula frágil dependiente del orden de fila"
+    description: >
+      Se confirmó en la hoja CSV_OPSOLD_FULL el mismo patrón de fragilidad
+      ya documentado para simulacros (INDEX/ROW o INDICE/FILA en lugar de
+      una clave estable) — cualquier reordenación, inserción o eliminación
+      de filas intermedias desalinearía silenciosamente los valores
+      resultantes. Segunda confirmación independiente del mismo patrón,
+      elevando su prioridad como riesgo transversal del proyecto.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: []
+    open_question_ids: []
+
+  - transformation_id: "etl_transform:ap.map_ap_and_map_ap_cr.historical_apid_double_confirmation"
+    workbook_id: "etl_workbook:ap.gct_new_sitecan"
+    sheet_id: null
+    source_columns: ["IDAccionCorrectora"]
+    target_column: "CS_HistoricalAPID"
+    formula: "Patrón de mapeo directo confirmado por lectura de las hojas MAP-AP (no-GCT) y MAP-AP-CR (GCT)"
+    transformation_type: "clave de identidad propia (correlation key) — doble confirmación"
+    description: >
+      Además de la confirmación ya registrada vía la hoja Index
+      (etl_transform:ap.map_updatedate.historical_apid_key), la lectura en
+      profundidad de las hojas de mapeo reales MAP-AP y MAP-AP-CR confirma
+      de forma independiente, en ambos sistemas de origen (no-GCT y GCT),
+      que CS_HistoricalAPID se deriva de IDAccionCorrectora como identidad
+      propia del Action Plan, distinta de CS_HistoricalOriginID (referencia
+      al padre). Ver action_plan_relationship_assessment.md para la
+      validación cuantitativa sobre datos reales.
+    confidence: high
+    evidence_status: confirmed
+    related_evidence_ids: ["evidence:csv_enablon.action_plans"]
+    open_question_ids: ["OQ-AP-02"]

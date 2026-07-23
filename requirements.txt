@@ -1,0 +1,22 @@
+# Núcleo
+pandas>=2.2
+numpy>=1.26
+PyYAML>=6.0
+python-dotenv>=1.0
+
+# Acceso a SQL Server (solo lectura)
+SQLAlchemy>=2.0
+pyodbc>=5.1
+sqlparse>=0.5
+
+# Lectura de Excel (ETL originales)
+openpyxl>=3.1
+
+# CLI / logging / utilidades
+click>=8.1
+rich>=13.7
+tqdm>=4.66
+
+# Testing
+pytest>=8.0
+pytest-cov>=5.0

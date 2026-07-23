@@ -1,0 +1,7 @@
+SELECT        ITP_INFORME_INV2.IDEvento, ITP_INFORME_INV2_FASE4.IDInfFase4, ITP_INFORME_INV2_FASE4.IDEstado, format( ITP_INFORME_INV2_FASE4.FechaEnvioFase,   'dd/MM/yyyy HH:mm:ss')  as FechaEnvioFase, ITP_INFORME_INV2_FASE4.EvaluacionRiesgos, 
+                         ITP_INFORME_INV2_FASE4.CategoriaEventos, ITP_INFORME_INV2_FASE4.NivelPSE, ITP_INFORME_INV2_FASE4.EventoConcaweIOGP, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion1, 
+                         ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion2, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion3, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion4, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion5, 
+                         ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion6, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion7, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion8, ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion9, 
+                         ITP_INFORME_INV2_FASE4.ArbolDecisionCuestion10, ITP_INFORME_INV2_FASE4.Observaciones, ITP_INFORME_INV2_FASE4.LeccionAprendida, ITP_INFORME_INV2_FASE4.RevisarHAZOP
+FROM            ITP_INFORME_INV2 inner JOIN
+                         ITP_INFORME_INV2_FASE4 ON ITP_INFORME_INV2.IDInformeInv = ITP_INFORME_INV2_FASE4.IDInformeInv

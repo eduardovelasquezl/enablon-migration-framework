@@ -1,0 +1,48 @@
+# Configuración de conexiones SQL — SIEMPRE de solo lectura.
+# Los valores reales (host, usuario, contraseña) NUNCA van aquí: se leen de
+# variables de entorno (ver .env.example). Este fichero solo define la forma
+# de la conexión y qué variable de entorno corresponde a cada dato sensible.
+
+default: prevencion
+
+connections:
+  prevencion:
+    description: >
+      Base de datos origen del sistema ITP/Prevención. Fuente de Simulacros,
+      Safety Meetings, Eventos, Inspecciones, OPS.
+    driver: "ODBC Driver 17 for SQL Server"
+    server_env: SQL_PREVENCION_HOST
+    database_env: SQL_PREVENCION_DB
+    user_env: SQL_PREVENCION_USER
+    password_env: SQL_PREVENCION_PASSWORD
+    read_only: true
+    application_intent: ReadOnly
+
+  gct:
+    description: >
+      Base de datos origen del sistema GCT (Gestión de Cambios Técnicos).
+      Fuente de MOC. IMPORTANTE: usa su propia numeración de IDCentro,
+      incompatible con la de 'prevencion'. Ver modules.yaml -> idcentro_map_gct.
+    driver: "ODBC Driver 17 for SQL Server"
+    server_env: SQL_GCT_HOST
+    database_env: SQL_GCT_DB
+    user_env: SQL_GCT_USER
+    password_env: SQL_GCT_PASSWORD
+    read_only: true
+    application_intent: ReadOnly
+
+safety:
+  # Salvaguarda a nivel de aplicación además de los permisos reales del
+  # usuario SQL (que ya deben ser de solo lectura en el propio servidor).
+  forbid_statements:
+    - INSERT
+    - UPDATE
+    - DELETE
+    - DROP
+    - ALTER
+    - TRUNCATE
+    - MERGE
+    - EXEC
+    - EXECUTE
+  max_rows_per_query: 2000000
+  query_timeout_seconds: 300

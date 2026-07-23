@@ -1,0 +1,329 @@
+# Catálogo de mappings — Bloque2_Mappings_SQL_ENA/
+#
+# Documental, no ejecutable. Resultado del análisis descrito en
+# mapping_evidence_assessment.md: los 9 ZIP de Bloque2_Mappings_SQL_ENA/ NO
+# contienen ningún mapping de campo, entidad o relación — contienen copias
+# (algunas bit a bit idénticas) de las queries SQL de extracción ya
+# catalogadas como `source_sql` en evidence_catalog.yaml. Por eso cada
+# entrada de este catálogo documenta la AUSENCIA confirmada de mapping en su
+# ZIP de origen, en vez de inventar una decisión que el archivo no contiene
+# (instrucción explícita de la Tarea 4 del incremento que produjo este
+# catálogo). No contiene datos sensibles ni rutas absolutas de máquina.
+#
+# Campo `mapping_presence` (añadido en el incremento de evidencia ETL/Bloque1
+# y Bloque3, de forma retrocompatible — no se ha eliminado ni reinterpretado
+# ninguna entrada histórica): documenta si la evidencia CONFIRMA presencia
+# (`present`), ausencia (`absent`) o queda sin determinar (`unknown`) de
+# mapping real. Las 9 entradas `no_field_mapping_found` de Bloque2 usan
+# `absent` (confirmado, no solo no encontrado por falta de búsqueda). La
+# entrada `nested_zip_packaging_anomaly` usa `unknown` porque no evalúa
+# presencia de mapping — documenta una anomalía de empaquetado distinta.
+# Estas entradas siguen siendo evaluaciones de AUSENCIA de mapping, nunca se
+# han convertido en mappings funcionales.
+
+catalog_version: "1.0"
+
+mappings:
+
+  - mapping_id: "mapping:bloque2.ap.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_ap", "evidence:sql_source.ap_acciones_correctoras"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/AP.zip"
+    source_file: "AP/Acciones_correctoras.sql (único archivo del ZIP)"
+    source_sheet: null
+    related_module: "ap"
+    related_migration_object: "ap.Action_Plans"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      El único archivo del ZIP es una query T-SQL de extracción (FULL JOIN
+      ITP_ACCIONES_CORRECTORAS / ITP_ORIGEN_AC), idéntica byte a byte
+      (SHA-256 47f0f9156b5c25f7...) a sql/source_queries/AP/Acciones_correctoras.sql.
+      No contiene ninguna columna de traducción origen→destino, ninguna
+      referencia a un campo Enablon, ni una tabla de reglas
+      DatoOrigen/DatoDestino/EsCondicion/ReglaEspecial/Parametro.
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este archivo NO es un documento de mapping — no que sí lo sea."
+      - "El mapping de campo real de Action Plans (si existe) seguiría en Bloque3_Mappings_Entidades/ (entidad, no campo) o en los workbooks ETL de Bloque1_ETL/, ninguno abierto en este incremento."
+    open_question_ids: ["OQ-AP-03"]
+
+  - mapping_id: "mapping:bloque2.bypass.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_bypass", "evidence:sql_source.bypass_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/bypass.zip"
+    source_file: "bypass/query_Bypass_prev2025.sql, bypass/SQLQuery-dataset_BES.sql (2 archivos)"
+    source_sheet: null
+    related_module: "bypass"
+    related_migration_object: "bypass.By_Passes"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Ambos archivos son queries T-SQL de extracción, idénticas byte a byte
+      a sus equivalentes en sql/source_queries/bypass/. Sin contenido de
+      mapping de campo.
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+    open_question_ids: []
+
+  - mapping_id: "mapping:bloque2.eventos.no_field_mapping_found"
+    evidence_ids:
+      - "evidence:mapping.bloque2_zip_eventos"
+      - "evidence:sql_source.eventos_full_join"
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Eventos.zip"
+    source_file: "13 archivos .sql (ver inventario completo en mapping_evidence_assessment.md §2)"
+    source_sheet: null
+    related_module: "eventos"
+    related_migration_object: "eventos.Events"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Los 13 archivos son queries T-SQL de extracción, todas idénticas byte
+      a byte a sus equivalentes en sql/source_queries/Eventos/. Incluye el
+      FULL JOIN ya conocido entre ITP_ANALISIS e ITP_INFORME_INVEST_PR227.
+      Sin contenido de mapping de campo. Dos archivos
+      ("...LESIÓN ANTIGUOS.sql") tienen nombre correctamente codificado en
+      UTF-8 dentro del ZIP, a diferencia de su copia suelta en
+      sql/source_queries/Eventos/, que tiene el nombre con mojibake genuino
+      ("├ô") — ver mapping_evidence_assessment.md §5.
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+      - "Incidencia de codificación de nombre documentada, no corregida en este incremento (no se modifica sql/source_queries/)."
+    open_question_ids: ["OQ-GLOBAL-01"]
+
+  - mapping_id: "mapping:bloque2.inspecciones.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_inspecciones", "evidence:sql_source.inspecciones_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Inspecciones.zip"
+    source_file: "6 archivos .sql (IPS/HK/PDT + Adjuntos_Inspecciones.sql)"
+    source_sheet: null
+    related_module: "inspecciones"
+    related_migration_object: "inspecciones.Inspections"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Los 6 archivos son queries T-SQL de extracción, idénticas byte a byte
+      a sus equivalentes en sql/source_queries/Inspecciones/. Sin contenido
+      de mapping de campo.
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+    open_question_ids: []
+
+  - mapping_id: "mapping:bloque2.moc.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_moc", "evidence:sql_source.moc_ct_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/MOC.zip"
+    source_file: "9 archivos .sql (DB_MOC_CT/CTOLD/SC + 6 de encuesta H/MA/S)"
+    source_sheet: null
+    related_module: "moc"
+    related_migration_object: "moc.Change_Register"
+    source_system: "gct"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Los 9 archivos son queries T-SQL de extracción, idénticas byte a byte
+      a sus equivalentes en sql/source_queries/MOC/, incluido DB_MOC_CT.sql
+      con sus 16 LEFT JOIN por fase de workflow. Sin contenido de mapping de
+      campo — no explica el mecanismo de titlefix ni resuelve el CCP
+      pendiente.
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+      - "No aporta evidencia sobre quién ejecuta titlefix (OQ-GLOBAL-02, sin cambios)."
+    open_question_ids: ["OQ-GLOBAL-02", "OQ-MOD-01", "OQ-MOD-02"]
+
+  - mapping_id: "mapping:bloque2.ops.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_ops", "evidence:sql_source.ops_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/OPS.zip"
+    source_file: "OPS/SQLQuery- OPS_ANTIGUAS.sql, OPS/SQLQuery_OPS_NUEVOS.sql (2 archivos)"
+    source_sheet: null
+    related_module: "ops"
+    related_migration_object: "ops.JSO"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Ambos archivos son queries T-SQL de extracción, idénticas byte a byte
+      a sus equivalentes en sql/source_queries/OPS/. Sin contenido de
+      mapping de campo.
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+    open_question_ids: []
+
+  - mapping_id: "mapping:bloque2.psm.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_psm", "evidence:sql_source.psm_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/PSM.zip"
+    source_file: "PSM/SQLQuery_DATOS PSM_EVT.sql, PSM/SQLQuery_DATOS PSM1.sql (2 archivos)"
+    source_sheet: null
+    related_module: "eventos"
+    related_migration_object: "eventos.PSM_Forms"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Ambos archivos son queries T-SQL de extracción, idénticas byte a byte
+      a sus equivalentes en sql/source_queries/PSM/. Sin contenido de
+      mapping de campo. No resuelve la ambigüedad estructural de PSM (folder
+      propio de SQL vs. submódulo de config bajo eventos).
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+      - "No aporta evidencia sobre la ubicación estructural real de PSM."
+    open_question_ids: ["OQ-GLOBAL-01"]
+
+  - mapping_id: "mapping:bloque2.reunionesdegrupo.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_reunionesdegrupo", "evidence:sql_source.sm_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Reunionesdegrupo.zip"
+    source_file: "SM/Acciones_SM2025.sql, SM/Asistentes_SM2025.sql, SM/SM2025.sql (3 archivos, carpeta interna 'SM/')"
+    source_sheet: null
+    related_module: "safety_meetings"
+    related_migration_object: "safety_meetings.Group_Meetings"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Los 3 archivos son queries T-SQL de extracción, idénticas byte a byte
+      a sus equivalentes en sql/source_queries/SM/. Sin contenido de mapping
+      de campo. La carpeta interna del ZIP usa el slug 'SM', igual que
+      sql/source_queries/ — ninguno de los dos usa 'reuniones_de_grupo', que
+      solo aparece en tests/ y en el nombre del ETL Excel.
+      Asistentes_SM2025.sql confirma la existencia de una fuente SQL
+      plausible para safety_meetings.Update_External_Meeting_Participations
+      (ya anotado como 'inferred' en migration_object_inventory.md; este ZIP
+      no añade una confirmación adicional más allá de la ya vista en
+      sql/source_queries/SM/, solo la reafirma).
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo."
+      - "No confirma formalmente si Asistentes_SM2025.sql es la fuente de Update External Meeting Participations — sigue siendo una inferencia por nombre."
+    open_question_ids: ["OQ-GLOBAL-03", "OQ-OBJ-02"]
+
+  - mapping_id: "mapping:bloque2.simulacros.no_field_mapping_found"
+    evidence_ids: ["evidence:mapping.bloque2_zip_simulacros", "evidence:sql_source.simulacros_folder"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Simulacros.zip"
+    source_file: "5 archivos .sql de primer nivel (ver mapping_evidence_assessment.md §2)"
+    source_sheet: null
+    related_module: "simulacros"
+    related_migration_object: "simulacros.Drills"
+    source_system: "prevencion"
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: unknown
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      Los 5 archivos de primer nivel son queries T-SQL de extracción,
+      idénticas byte a byte a sus equivalentes en
+      sql/source_queries/Simulacros/. Sin contenido de mapping de campo.
+      Este ZIP además contiene una entrada anidada SM.zip (ver mapping_id
+      mapping:bloque2.simulacros.nested_zip_packaging_anomaly).
+    confidence: high
+    evidence_status: validated
+    mapping_presence: absent
+    limitations:
+      - "Validado que este ZIP NO contiene mapping de campo (a nivel de sus 5 archivos .sql propios)."
+    open_question_ids: []
+
+  - mapping_id: "mapping:bloque2.simulacros.nested_zip_packaging_anomaly"
+    evidence_ids: ["evidence:mapping.bloque2_zip_simulacros", "evidence:mapping.bloque2_zip_reunionesdegrupo"]
+    source_archive: "inputs/_incoming_claude_web/Bloque2_Mappings_SQL_ENA/Simulacros.zip"
+    source_file: "SM.zip (entrada anidada dentro de Simulacros.zip)"
+    source_sheet: null
+    related_module: "simulacros"
+    related_migration_object: null
+    source_system: null
+    mapping_scope: unknown
+    decision_type: unknown
+    mapping_status: not_applicable
+    source_fields: []
+    source_values: []
+    target_field: null
+    target_values: []
+    composite_key: []
+    rule_description: >
+      No es un mapping — es una anomalía de empaquetado. La entrada SM.zip
+      anidada dentro de Simulacros.zip es, byte a byte (SHA-256 completo:
+      43e48cd4...d3e248c, 2507 bytes), una copia exacta e íntegra del
+      archivo Reunionesdegrupo.zip. Simulacros.zip tiene fecha de
+      modificación 2026-07-22, un día posterior a los otros 8 ZIP
+      (2026-07-21, incluido Reunionesdegrupo.zip) — consistente con que
+      Simulacros.zip fue reempaquetado después y en ese reempaquetado se
+      incluyó por error una copia completa de otro ZIP ya existente.
+    confidence: high
+    evidence_status: conflicting
+    mapping_presence: unknown
+    limitations:
+      - "No se ha determinado si la inclusión fue intencional (motivo desconocido) o accidental — se documenta como conflicto de packaging, no se asume ninguna de las dos causas."
+      - "No se ha eliminado ni modificado la entrada anidada en el ZIP original."
+    open_question_ids: ["OQ-GLOBAL-06"]

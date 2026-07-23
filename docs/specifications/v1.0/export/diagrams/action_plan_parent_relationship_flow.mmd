@@ -1,0 +1,33 @@
+flowchart TD
+    ROW["Fila de Action Plans\n(CSV real, 31444 filas)"]
+    APID{"CS_HistoricalAPID\npresente?"}
+    ORIGINID{"CS_HistoricalOriginID\npresente?"}
+    PARENTKEY["Padre = (CS_HistoricalDataOrigin,\nCS_HistoricalOriginID)"]
+
+    ROW --> APID
+    APID -->|"No (0.19%)"| EMPTYAPID["empty_action_id\n(60 filas)"]
+    APID -->|"Si (99.81%)"| ORIGINID
+    ORIGINID -->|"No (0.003%)"| UNRESOLVED["unresolved_parent\n(1 fila)"]
+    ORIGINID -->|"Si (99.997%)"| PARENTKEY
+
+    PARENTKEY --> GROUPSIZE{"Tamano del grupo\n(acciones por padre)"}
+    GROUPSIZE -->|"1 accion\n(55.35% de padres)"| STANDALONE["standalone_action_candidate"]
+    GROUPSIZE -->|">1 accion\n(44.65% de padres)"| APIDCHECK{"APID unicos\ndentro del grupo?"}
+
+    APIDCHECK -->|"Si (98.2% de grupos\ncompartidos)"| LEGIT["legitimate_one_to_many_candidate\n76.17% de las filas totales"]
+    APIDCHECK -->|"No (1.8% de grupos\ncompartidos)"| DUP["duplicate_action_candidate\n1.10% de las filas totales"]
+
+    LEGIT -.->|"chequeo adicional"| CROSSCHECK{"mismo APID visto en\notro sistema origen?"}
+    DUP -.->|"chequeo adicional"| CROSSCHECK
+    CROSSCHECK -->|"Si (1437 valores APID)"| CROSS["cross_system_collision_candidate\n(hallazgo nuevo — identidad, no OriginID)"]
+    CROSSCHECK -->|"No"| NOCOLLISION["sin colision de identidad"]
+
+    classDef neutral fill:#616161,color:#ffffff,stroke:#3a3a3a;
+    classDef good fill:#2e7d32,color:#ffffff,stroke:#1b5e20;
+    classDef warn fill:#ef6c00,color:#ffffff,stroke:#a34c00;
+    classDef bad fill:#c62828,color:#ffffff,stroke:#8e0000;
+
+    class ROW,APID,ORIGINID,PARENTKEY,GROUPSIZE,APIDCHECK,CROSSCHECK neutral
+    class STANDALONE,LEGIT,NOCOLLISION good
+    class EMPTYAPID,UNRESOLVED warn
+    class DUP,CROSS bad

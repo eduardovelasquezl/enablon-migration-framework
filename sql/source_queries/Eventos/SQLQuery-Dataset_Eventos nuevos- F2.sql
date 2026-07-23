@@ -1,0 +1,6 @@
+SELECT        ITP_ANALISIS_EVENTO.IDEvento, ITP_INFORME_INV2.IDInformeInv, ITP_INFORME_INV2.FaseActual, ITP_INFORME_INV2.IDEstado, ITP_INFORME_INV2_FASE2.IDInfFase2, ITP_INFORME_INV2_FASE2.ImpactoPotencial, 
+                         ITP_INFORME_INV2_FASE2.ProbabilidadPotencial, ITP_INFORME_INV2_FASE2.Gravedad, ITP_INFORME_INV2_FASE2.ConsultadoSeguridad, ITP_INFORME_INV2_FASE2.ComentadoConMedioAmbiente, 
+                         ITP_INFORME_INV2_FASE2.Participante, format( ITP_INFORME_INV2_FASE2.FechaEnvioFase,   'dd/MM/yyyy HH:mm:ss') as FechaEnvioFase
+FROM            ITP_ANALISIS_EVENTO FULL OUTER JOIN
+                         ITP_INFORME_INV2 ON ITP_ANALISIS_EVENTO.IDEvento = ITP_INFORME_INV2.IDEvento INNER JOIN
+                         ITP_INFORME_INV2_FASE2 ON ITP_ANALISIS_EVENTO.IDEvento = ITP_INFORME_INV2_FASE2.IDEvento AND ITP_INFORME_INV2.IDInformeInv = ITP_INFORME_INV2_FASE2.IDInformeInv

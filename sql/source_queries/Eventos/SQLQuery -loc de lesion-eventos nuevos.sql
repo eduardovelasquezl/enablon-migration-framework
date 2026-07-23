@@ -1,0 +1,6 @@
+SELECT        ITP_INFORME_MEDICO.IDEvento, ITP_IM_MAESTROS.*, ITP_MAESTROS.Descripcion,  ITP_TIPOS_MAESTROS.Nombre
+FROM            ITP_INFORME_MEDICO JOIN
+                         ITP_ANALISIS_EVENTO ON ITP_INFORME_MEDICO.IDEvento = ITP_ANALISIS_EVENTO.IDEvento  JOIN
+                         ITP_IM_MAESTROS ON ITP_INFORME_MEDICO.IDInformeMed = ITP_IM_MAESTROS.IDInformeMed
+                         join ITP_MAESTROS on ITP_IM_MAESTROS.IDMaestro = ITP_MAESTROS.IDMaestro join 
+                           ITP_TIPOS_MAESTROS on ITP_IM_MAESTROS.IDTipoMaestro = ITP_TIPOS_MAESTROS.IDTipoMaestro where ITP_IM_MAESTROS.IDTipoMaestro = 2

@@ -1,0 +1,26 @@
+flowchart TD
+    EV["Evidence\n(SQL, ETL, CSV real, mapping, ADR, test, ticket)"]
+    REV["Evidence Review\n(clasificar tipo, confianza, estado)"]
+    RA["Readiness Assessment\n(specification_readiness, template_status,\nsource/mapping/relationship/client_override status)"]
+
+    EV --> REV --> RA
+
+    RA -->|"evidencia suficiente\n(fuente + identidad + salida + relaciones)"| DRAFT["Draft Specification\n(por MigrationObject, fuera de alcance\nde este incremento)"]
+    DRAFT --> FUNC["Functional Validation\n(cliente confirma regla/columna)"]
+    FUNC --> APPROVED["Approved Specification"]
+    APPROVED --> IMPL["Future Implementation\n(Export Engine — Approved Design,\nno implementado)"]
+
+    RA -->|"evidencia insuficiente"| PEND["evidence_pending"]
+    PEND --> OQ["Open Question\n(open_questions.md)"]
+    OQ -->|"se resuelve"| REV
+    OQ -->|"sigue sin resolver"| PEND
+
+    classDef implemented fill:#2e7d32,color:#ffffff,stroke:#1b5e20;
+    classDef pending fill:#c62828,color:#ffffff,stroke:#8e0000;
+    classDef approved fill:#1565c0,color:#ffffff,stroke:#0d3c78;
+    classDef neutral fill:#616161,color:#ffffff,stroke:#3a3a3a;
+
+    class EV,REV,RA neutral
+    class DRAFT,FUNC,APPROVED approved
+    class IMPL implemented
+    class PEND,OQ pending

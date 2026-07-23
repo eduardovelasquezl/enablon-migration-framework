@@ -1,0 +1,7 @@
+SELECT        ITP_INFORME_MEDICO.IDAnalisis, ITP_IM_MAESTROS.IDInformeMed, ITP_IM_MAESTROS.IDMaestro, ITP_IM_MAESTROS.IDTipoMaestro, ITP_MAESTROS.Codigo, 
+                         ITP_MAESTROS.Descripcion, ITP_MAESTROS.DescripcionLarga, ITP_TIPOS_MAESTROS.Nombre, ITP_ANALISIS.Suceso
+FROM            ITP_ANALISIS INNER JOIN
+                         ITP_INFORME_MEDICO ON ITP_ANALISIS.IDAnalisis = ITP_INFORME_MEDICO.IDAnalisis INNER JOIN
+                         ITP_IM_MAESTROS ON ITP_INFORME_MEDICO.IDInformeMed = ITP_IM_MAESTROS.IDInformeMed INNER JOIN
+                         ITP_MAESTROS ON ITP_IM_MAESTROS.IDMaestro = ITP_MAESTROS.IDMaestro INNER JOIN
+                         ITP_TIPOS_MAESTROS ON ITP_MAESTROS.IDTipoMaestro = ITP_TIPOS_MAESTROS.IDTipoMaestro where  ITP_IM_MAESTROS.IDTipoMaestro = 2

@@ -1,0 +1,293 @@
+# Registro de módulos de migración. Cada entrada resume lo que ya sabemos por
+# el análisis manual de ETL, queries, CSV reales y catálogo de entidades.
+# No inventar columnas o reglas que no estén confirmadas aquí o en CLAUDE.md —
+# marcar como "pendiente_confirmar" en su lugar.
+
+# --- Mapeo IDCentro -> Site, sistema ITP/Prevención ---
+# Válido para: Simulacros, Safety Meetings, Eventos, Inspecciones, OPS.
+idcentro_map_itp:
+  1: "Serv. Prev. Partenon"
+  2: "Algeciras"
+  3: "Ref. Tenerife"
+  4: "Guadarranque"
+  5: "Servicio Prevención LA RABIDA"
+  6: "FILIALES VV.DD"
+  7: "MC-Palos de la Frontera"
+  8: "GASIB"
+  9: "CQ-Puente Mayorga"
+  10: "PETROPESCA"
+  11: "DISTRIBUCION CES"
+  12: "CMF"
+  16: "ASFALTOS"
+  17: "Empresas de Servicio R.Tenerife"
+  18: "M&NC"
+  19: "Gestores y Abanderados"
+  20: "OPERACIONES AVIACIÓN"
+  21: "CQ-SHANGHAI"
+  22: "SPM CEPSA MADRID"
+  23: "FACTORÍAS"
+  24: "CEPSA EP"
+  25: "CORPORATIVO"
+  26: "Lubes Paterna"
+  27: "PETROCAN"
+  28: "VETTING"
+  29: "OF. COMERCIALES"
+  30: "SITE CANARIAS"
+  31: "LUBRICANTES"
+
+# --- Mapeo IDCentro -> Site, sistema GCT ---
+# Válido SOLO para MOC. Numeración propia, NO cruzar con idcentro_map_itp.
+idcentro_map_gct:
+  17: "Servicio Prevención LA RABIDA"   # GCT usa 17 para La Rábida; ITP usa 17 para Tenerife
+  32: "MC-Palos de la Frontera"
+  33: "Algeciras"                        # "SITE San Roque" en nomenclatura GCT
+  35: "CCP"                              # pendiente_confirmar: probablemente Puente Mayorga
+  36: "C&CE"
+
+# Entidades con rollback de producción confirmado por el cliente (BAK de corte
+# recargado). NO asumir que estas explican los gaps de volumetría por sí solas
+# — ver "hallazgo_1" más abajo, el patrón real va en la dirección contraria.
+rollback_entities:
+  - code: "ENERGYP.SR"
+    site: "Algeciras"
+  - code: "ENERGYP.CAN"
+    site: "SITE CANARIAS"
+  - code: "MCHEM.MCPM"
+    site: "CQ-Puente Mayorga"
+  - code: "CCE"
+    site: "varios (Asfaltos, Factorías, Aviación, Lubricantes...)"
+  - code: "CCE.05"
+    site: "Biocombustibles (agrupado aprox. como FACTORÍAS en el catálogo resuelto)"
+
+# Hallazgo #1 del proyecto — no borrar ni resumir, es la prioridad número 1.
+hallazgo_1_infra_migracion:
+  sites_afectados: ["Servicio Prevención LA RABIDA", "MC-Palos de la Frontera"]
+  patron: >
+    Ambos sites representan 20-45% del volumen de origen SQL en Eventos,
+    Inspecciones y MOC (dos sistemas de origen distintos), pero solo el
+    0.1-3% del volumen real en Enablon. NO están en la lista de rollback.
+    Confirmar con el cliente antes de asumir causa.
+  modulos_confirmados: ["eventos", "inspecciones", "moc"]
+  modulos_pendientes_de_revisar: ["simulacros", "safety_meetings", "bypass", "ops", "ap"]
+
+modules:
+
+  simulacros:
+    nombre: "Business Continuity Management (Simulacros)"
+    estado: "cerrado — migración ya completa y validada"
+    fuente_sistema: "prevencion"
+    tablas_origen:
+      - {tabla: "DB_OrigenSim", filas_conocidas: 12501, rol: "creación"}
+      - {tabla: "ITP_SIM_ACCIONES_CORRECTORAS", filas_conocidas: 5604, rol: "actualización (acciones correctoras)"}
+      - {tabla: "ITP_ASIST_SIMS", filas_conocidas: 21955, rol: "asistentes internos"}
+      - {tabla: "ITP_ASIST_SIMS_EXT", filas_conocidas: 21955, rol: "asistentes externos"}
+    campo_entidad_origen: "IDUnidadOrg (resuelto a RutaEnablon/Code vía catálogo antiguo, esquema histórico -XXH, correcto para su época)"
+    campo_entidad_destino_csv: "CS_ImpactedEntities"
+    clave_correlacion: "CS_HistoricalOriginID = CONCATENAR(Reference;\"-\";\"HIST\";\"-\";Centro;\"-\";TEXTO(Fecha;\"dd/mm/aaaa\"))"
+    reglas_no_estandar:
+      - {campo: "Duración", regla: "CalculoHorasDiasMinutos", nota: "redondeo a múltiplos de 5 min, mes fijo de 30 días — pérdida de precisión confirmada"}
+    volumetria_conocida:
+      total_origen: 12501
+      total_enablon_real: 11921
+      gap_pct: -4.6
+      nota: "gap sano, explicado por registros 'No migra' y errores de origen legítimos (IDUnidadOrg nulo)"
+    csv_enablon_real: "Drills-*.csv (UTF-16, tab-delimited)"
+
+  safety_meetings:
+    nombre: "Safety Meetings (Reuniones de grupo)"
+    estado: "cerrado — gap de catálogo resuelto"
+    fuente_sistema: "prevencion"
+    tablas_origen:
+      - {tabla: "ITP-SM-DBC", filas_conocidas: 10782, rol: "creación"}
+      - {tabla: "ITP-SM-manual", filas_conocidas: 10440, rol: "NO documentada en Index — 14 registros exclusivos, riesgo de pérdida"}
+      - {tabla: "ITP_ASISTENTES_RG / ITP_ASISTENTES_EXT", rol: "asistentes"}
+    campo_entidad_origen: "IDUnidadOrg -> RutaEnablon (formato Ruta1 completo, no Code corto)"
+    campo_entidad_destino_csv: "CS_Entity"
+    csv_enablon_real: ["Group_Meetings-*.csv", "Update_External_Meeting_Participations-*.csv"]
+    volumetria_conocida:
+      total_origen: 10782
+      total_enablon_real: 10287
+      gap_pct: -4.6
+      nota: "sano tras aplicar catálogo real de entidades (antes 51% 'no catalogado')"
+    defectos_confirmados:
+      - "asistentes incompletos: solo se usa 1 de 2 campos origen posibles (Asistentes, Nombre Usuario) — ticket cliente #7359"
+      - "duplicados reportados por el cliente (#6948), no cuantificados por nosotros aún"
+
+  moc:
+    nombre: "Management of Change"
+    estado: "abierto — pendiente confirmar CCP y resolver hallazgo_1"
+    fuente_sistema: "gct"
+    tablas_origen:
+      - {tabla: "DB_MOC_CT / CT_SOLICITUDES_CT2", filas_conocidas: 8067, rol: "creación, sistema nuevo"}
+      - {tabla: "DB_MOC_CTOLD / CT_SOLICITUDES_CAMBIO", filas_conocidas: 776, rol: "creación, sistema antiguo"}
+      - {tabla: "DB_MOC_SC", filas_conocidas: 27, rol: "solicitudes de cambio"}
+    campo_entidad_origen: "IDCentro (esquema GCT — ver idcentro_map_gct, NO usar idcentro_map_itp)"
+    campo_entidad_destino_csv: "FirstAxis (ruta completa Ruta1, no Code corto)"
+    clave_correlacion: "CS_HistoricalOriginID = cloneorigin(IDSolicitudCambio)"
+    csv_enablon_real: "Change_Register-*.csv"
+    volumetria_conocida:
+      total_origen: 8870
+      total_enablon_real: 5389
+      gap_pct: -39
+      nota: >
+        Sin WHERE de scope en la query origen (SELECT * simple). Alta
+        exposición a La Rábida (17 en GCT) y Palos (32) — ver hallazgo_1.
+        Distribución real: Algeciras 58.6%, La Rábida 19.3%, pero origen es
+        45% Palos + 38% San Roque/Algeciras — Palos prácticamente ausente
+        en el dato real.
+    defectos_confirmados:
+      - "titlefix confirmado: stripping de comillas dobles, 76/5207 casos, pierde significado de pulgadas (8\" -> 8)"
+      - "fases de flujo incorrectas tras migrar (tickets cliente #7249, #7363, #7482)"
+      - "cambios anulados migrados como activos (ticket #7226)"
+      - "VBA del libro confirmado 100% vacío — titlefix no tiene motor visible en el Excel"
+    bloque_no_automatizable_sin_api_enablon: "Checklists de Risk Assessment requieren generar formularios vacíos en la UI de Enablon y reimportar el CSV de respuestas manualmente"
+
+  bypass:
+    nombre: "Bypass de Funciones y Elementos de Seguridad (BES)"
+    estado: "cerrado tras aplicar catálogo real"
+    fuente_sistema: "prevencion"
+    tablas_origen:
+      - {tabla: "DBLink_BES", filas_conocidas: 7202, rol: "creación"}
+    campo_entidad_origen: "IDUnidadOrg -> RutaEnablon (formato Code corto)"
+    campo_entidad_destino_csv: "Entity"
+    csv_enablon_real: "By-Passes_of_functions_and_safety_elements-*.csv"
+    volumetria_conocida:
+      total_origen: 7202
+      total_enablon_real: 7040
+      gap_pct: -2.2
+      nota: "sano tras aplicar catálogo real (antes 42% 'no catalogado' en La Rábida)"
+    reglas_no_estandar:
+      - {campo: "Equipo/TAG", regla: "condicional entre campos, no bloquea import vía CSV/API — solo restricción de UI"}
+      - {campo: "GOS", nota: "calculado automáticamente por Enablon al asociar documento — NO importable"}
+    campos_no_importables_confirmados:
+      - "FechaEnvioFase1..6"
+      - "MotivoAprobacionFase2/3/5"
+      - "Autorizar"
+    dependencia_operativa: "requiere desactivar 'fieldsets' de validación en Enablon antes de cargar y restaurarlos después"
+
+  eventos:
+    nombre: "Health & Safety Incidents (Eventos, Impactos, Investigaciones, PSM)"
+    estado: "abierto — gap del FULL JOIN corregido parcialmente, hallazgo_1 confirmado"
+    fuente_sistema: "prevencion"
+    submodulos: ["antiguos", "nuevos"]
+    tablas_origen:
+      antiguos:
+        - {tabla: "ITP_ANALISIS", filas_conocidas: 14169, rol: "análisis base"}
+        - {tabla: "ITP_INFORME_INVEST_PR227", filas_conocidas: 9496, rol: "investigación (FULL JOIN con ITP_ANALISIS — ver nota_full_join)"}
+      nuevos:
+        - {tabla: "ITP_ANALISIS_EVENTO", filas_conocidas: 4837, rol: "análisis base"}
+        - {tabla: "ITP_INFORME_INV2", rol: "investigación (FULL JOIN)"}
+      psm:
+        - {tabla: "DB-ITP-PSM", filas_conocidas: 259807, rol: "respuestas de formulario PSM"}
+    nota_full_join: >
+      La query real usa FULL JOIN entre análisis e investigación. El recuento
+      ingenuo de filas (14169) NO es "eventos a migrar" — solo 9496 análisis
+      tienen investigación asociada. Usar 9496 como base más justa para
+      Eventos Antiguos (gap revisado ~-44%, no -62%).
+    campo_entidad_origen: "IDUnidadOrg -> RutaEnablon (Ruta1 completo)"
+    campo_entidad_destino_csv: "Entity (en Events.csv)"
+    clave_correlacion:
+      eventos: "CS_HistoricalEventID"
+      impactos: "CS_HistImpactID / CS_HistImpactIDOH"
+      investigaciones: "CS_HistoricalExtenalId"
+    csv_enablon_real: ["Events-*.csv", "Impacts-*.csv", "Investigations-*.csv", "PSM_forms-*.csv"]
+    orquestacion: >
+      Pipeline de ~14-24 pasos create/update encadenados entre 3-4 objetos
+      Enablon (Eventos, Impactos, Investigaciones, PSM). Existe un paso
+      documentado que restaura datos vaciados como efecto secundario de
+      updates anteriores — bug estructural conocido, no replicar el parche,
+      corregir la causa (updates no deberían sobrescribir la fila completa).
+    volumetria_conocida:
+      total_origen_antiguos: 14169  # o 9496 si se usa el criterio "con investigación"
+      total_origen_nuevos: 4837
+      total_enablon_real: 7943
+      gap_pct_revisado: -44
+      exposicion_hallazgo_1_pct: 70.6
+    defectos_confirmados:
+      - "585 eventos duplicados (mismo CS_HistoricalEventID, distinto Id, contenido idéntico verificado)"
+      - "1113/7878 (14%) Impacts huérfanos (Reference sin Evento correspondiente)"
+      - "1121/7565 (15%) Investigations huérfanas"
+      - "impactos con clasificación errónea (ticket cliente #6961, Puente Mayorga)"
+      - "PSM con respuestas en inglés — fallo del fan-out de cloneorigin a 5 idiomas (ticket #7437)"
+      - "CS_HistoricalDataOrigin con variantes de tilde inconsistentes ('Prevencion' vs 'Prevención') — normalizar antes de agrupar"
+
+  ops:
+    nombre: "Behaviour Based Safety (OPS)"
+    estado: "abierto"
+    fuente_sistema: "prevencion"
+    tablas_origen:
+      - {tabla: "DB-ITP_OPS", filas_conocidas: 131095, rol: "creación, sistema antiguo"}
+      - {tabla: "ITP_OPS2", filas_conocidas: 66897, rol: "creación, sistema nuevo"}
+    campo_entidad_origen: "IDUnidadOrg -> RutaEnablon (Ruta1 completo)"
+    campo_entidad_destino_csv: "Entity (en JSO.csv)"
+    csv_enablon_real: "JSO-*.csv"
+    volumetria_conocida:
+      total_origen: 197990
+      total_enablon_real: 176176
+      gap_pct: -11
+      exposicion_hallazgo_1_pct: 32.8
+    defectos_confirmados:
+      - "423 registros duplicados (mismo CS_HistoricalOriginID, distinto Id, contenido idéntico verificado)"
+    reglas_no_estandar:
+      - {campo: "CS_CongratulatedWorker", nota: "solo aplica si Unsafe Behavior = YES"}
+    lookup_nuevo: "ITP_CONTRATISTAS (empresas contratistas, 1928 filas)"
+
+  inspecciones:
+    nombre: "Inspection Management"
+    estado: "abierto — gap probablemente relacionado con hallazgo_1"
+    fuente_sistema: "prevencion"
+    subtipos: ["IPS (base/histórico)", "PW", "HK (Housekeeping)"]
+    tablas_origen:
+      - {tabla: "ITP_IPS", filas_conocidas: 17624, rol: "creación IPS"}
+      - {tabla: "ITP_INFORMECHECKLISTPT", filas_conocidas: 19431, rol: "creación PW"}
+      - {tabla: "ITP_INFORMECHECKLISTGHK", filas_conocidas: 5367, rol: "creación HK"}
+      - {tabla: "DB_ITP-PW_upd", filas_conocidas: 641224, rol: "respuestas de checklist (el mayor volumen del proyecto)"}
+    campo_entidad_origen: "IDCentro/IDUnidadOrg -> RutaEnablon"
+    campo_entidad_destino_csv: "Entity (en Inspections.csv)"
+    csv_enablon_real: ["Inspections-*.csv", "Observations-*.csv", "Inspection_Data-*.csv (export parcial, no se puede exportar completo)"]
+    volumetria_conocida:
+      total_origen: 42422
+      total_enablon_real: 21896
+      gap_pct: -48.4
+      exposicion_hallazgo_1_pct: 73.8
+      nota: >
+        Patrón consistente ~48-51% en los 3 subtipos de forma independiente —
+        muy probablemente explicado por hallazgo_1 (La Rábida 34.8% del origen
+        -> 3.0% real; Palos 11.8% del origen -> 1.4% real), no por un filtro
+        de scope (la query no tiene WHERE).
+    defectos_confirmados:
+      - "campo Instalación vacío en muchas inspecciones migradas (ticket cliente #7639)"
+      - "cálculo de progreso incorrecto: inspecciones acabadas aparecen como 0% (ticket #7553)"
+    dato_bueno: "Observations -> Inspections tiene integridad referencial perfecta (100% de las 18382 observaciones cruzan con su inspección)"
+    modelo_respuesta: "polimórfico por tipo de pregunta (CheckboxValue, NumberIntegerValue, TextValue, AnswerDateValue, PublishedChoiceProperties...) — enrutar por IDTipoPregunta, no es mapeo campo-a-campo simple"
+
+  ap:
+    nombre: "Action Plans (transversal — se alimenta de todos los módulos)"
+    estado: "abierto — gaps probablemente explicados por rollback, confirmado por tickets del cliente"
+    fuente_sistema: "prevencion (genérico) + gct (solo MOC)"
+    etls: ["AP_GCT (solo MOC)", "AP-Con Ajuste Entidad (resto de módulos)"]
+    tabla_origen_unica: "ITP_Acciones_correctoras, clasificada por idorigenac"
+    idorigenac_por_modulo:
+      eventos_antiguos: [2, 13]
+      eventos_nuevos: [16, 17]
+      inspecciones_hist: [4, 9]
+      simulacros: [12, 18]
+      ops: [3, 8]
+      ops2: "sin datos (gap reconocido explícitamente por el propio ETL)"
+      visitas_seguridad_y_otros: [7, 14]   # módulo no analizado en detalle todavía
+      safety_meetings: [11]
+    csv_enablon_real: "Action_Plans-*.csv"
+    campos_de_enlace_a_otros_modulos:
+      - BCCrisis        # Simulacros
+      - CS_ByPasses      # Bypass
+      - CS_Meetings      # Safety Meetings
+      - MoCChange        # MOC
+      - CS_IndependentManualEvents  # Eventos
+      - CS_IndManualOPS  # OPS
+      - CS_IP            # Inspecciones
+    nota: >
+      La mayoría de registros NO tienen ninguno de los campos de enlace
+      poblado — pendiente de entender si es esperado o un defecto.
+    defectos_confirmados:
+      - "tickets del cliente confirman planes de acción sin migrar en Site Canarias (>3000), MCPM, C&CE/JV Bios — coincide con la lista de rollback"
+      - "63% de los registros comparten CS_HistoricalOriginID con otro (11905 únicos de 31444) — pendiente de investigar si es un patrón válido (como en Inspecciones/Observations) o un defecto"

@@ -1,0 +1,18 @@
+SELECT [IdInformeCheckList]
+      ,FORMAT([Fecha], 'dd/MM/yyyy HH:mm:ss') AS Fecha
+      ,[IdCentro]
+      ,[IdEmpresa]
+      ,[IdDepartamento]
+      ,[IdUnidadOrganizativa]
+      ,[Realizador]
+      ,[OtroRealizador]
+      ,[Zona]
+      ,[CoordenadasGeo]
+      ,[IdEstado]
+      ,FORMAT([FechaCreacion], 'dd/MM/yyyy HH:mm:ss') AS FechaCreacion
+      ,[IdUsuarioCorreo]
+      ,[NearMisses]
+      ,[NumAnomaliasEncontradas]
+      ,[UsuarioUltimaMod]
+      ,[IDSeguridad]
+  FROM [Prevencion].[dbo].[ITP_INFORMECHECKLISTGHK]

@@ -1,0 +1,111 @@
+# Catálogo de variantes de la fórmula Reference — simulacros.Drills
+#
+# Documental, no ejecutable. Registra la decisión funcional aprobada
+# (AFD-DRILLS-REFERENCE-001) y las 3 variantes de fórmula localizadas en
+# ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx para el campo Reference de
+# Drills, clasificando cuál reproduce la regla aprobada y cuáles no.
+# Ningún archivo Excel fue modificado para producir este catálogo.
+
+catalog_version: "1.0"
+
+approved_rule:
+  evidence_id: AFD-DRILLS-REFERENCE-001
+  related_module: simulacros
+  related_migration_object: Drills
+  target_column: Reference
+  pattern: "<CS_Typology>-HIST-<CS_HistoricalOriginID>-<StartingDate(dd/MM/yyyy)>"
+  date_format: "dd/MM/yyyy"
+  separator: "-"
+  fixed_literal: "HIST"
+  spaces_allowed: false
+  status: approved
+
+reference_variants:
+
+  - reference_variant_id: "refvar:drills.csv_sim_full.array_concat"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.csv_sim_full"
+    target_column: "Reference (columna B)"
+    formula: >
+      $=CONCATENAR(INDICE(J:J;FILA());"-";"HIST";"-";INDICE(AD:AD;FILA());"-";TEXTO(INDICE(K:K;FILA());"dd/mm/aaaa"))
+    formula_pattern: "CONCAT(CS_Typology, '-', 'HIST', '-', CS_HistoricalOriginID, '-', TEXT(StartingDate,'dd/mm/aaaa'))"
+    source_fields: ["CS_Typology (col J de la propia hoja de salida)", "CS_HistoricalOriginID (col AD)", "StartingDate (col K)"]
+    row_coverage: "12302 filas (CSV_SIM_full completo)"
+    observed_output_pattern: "<Typology>-HIST-<OriginID>-<dd/mm/aaaa>"
+    related_csv_column: "Reference"
+    candidate_status: current_rule
+    matches_approved_rule: true
+    confidence: high
+    evidence_ids: ["evidence:etl.bcm_simulacros_updateeje"]
+    limitations:
+      - "Fórmula de array dinámico (prefijo '$='), variante técnica de Excel de la misma lógica que la Variante B — no se trata de una regla distinta, sino de la misma regla expresada con la sintaxis de array de Excel 365 en vez de fórmula clásica arrastrada."
+      - "No se ha verificado fila por fila la totalidad de las 12302 filas — solo una muestra de 7 (filas 2-8), todas consistentes con el patrón."
+    open_question_ids: []
+
+  - reference_variant_id: "refvar:drills.csv_sim.classic_concat"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.csv_sim"
+    target_column: "Reference (columna B)"
+    formula: >
+      =CONCATENATE(J2,"-","HIST","-",AD2,"-",TEXT(K2,"dd/mm/aaaa"))
+    formula_pattern: "CONCATENATE(CS_Typology, '-', 'HIST', '-', CS_HistoricalOriginID, '-', TEXT(StartingDate,'dd/mm/aaaa'))"
+    source_fields: ["CS_Typology (col J)", "CS_HistoricalOriginID (col AD)", "StartingDate (col K)"]
+    row_coverage: "12104 filas (CSV_SIM completo)"
+    observed_output_pattern: "<Typology>-HIST-<OriginID>-<dd/mm/aaaa>"
+    related_csv_column: "Reference"
+    candidate_status: current_rule
+    matches_approved_rule: true
+    confidence: high
+    evidence_ids: ["evidence:etl.bcm_simulacros_updateeje"]
+    limitations:
+      - "Semánticamente idéntica a refvar:drills.csv_sim_full.array_concat — misma regla, fórmula clásica por fila en vez de array dinámico."
+      - "Ejemplo cacheado confirmado: 'PEI-HIST-3-18/09/2008' (Typology=PEI, OriginID=3, fecha=18/09/2008) — reproduce exactamente el patrón del ejemplo aprobado (PEI1-HIST-440-08/03/2010)."
+    open_question_ids: []
+
+  - reference_variant_id: "refvar:drills.export_sim_uat.values_only"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.export_sim_uat"
+    target_column: "Reference (columna B)"
+    formula: null
+    formula_pattern: "sin fórmula — valores pegados (paste-as-values)"
+    source_fields: []
+    row_coverage: "11965 filas (Export sim UAT completo)"
+    observed_output_pattern: "<Typology>-HIST-<OriginID>-<dd/mm/aaaa> (idéntico en forma a las Variantes A/B, sin fórmula viva)"
+    related_csv_column: "Reference"
+    candidate_status: current_rule
+    matches_approved_rule: true
+    confidence: medium
+    evidence_ids: ["evidence:etl.bcm_simulacros_updateeje"]
+    limitations:
+      - "No es una fórmula distinta — es una instantánea de valores ya calculados (ejemplo cacheado 'PEI-HIST-3-18/09/2008', igual forma que las Variantes A/B). Se registra como variante separada porque el enunciado del incremento anterior la contaba como una de las '3 fórmulas', pero en sentido estricto no aporta una regla nueva, solo confirma el resultado de A/B en una etapa de exportación posterior (probablemente UAT)."
+      - "No se puede confirmar en qué momento se congelaron estos valores ni si reflejan la Variante A, la B, o ambas indistintamente."
+    open_question_ids: []
+
+  - reference_variant_id: "refvar:drills.csv_generated_bcm_sim.no_hist_literal"
+    workbook_id: "etl_workbook:simulacros.bcm_updateeje"
+    sheet_id: "etl_sheet:simulacros.csv_generated_bcm_sim"
+    target_column: "Reference (columna B)"
+    formula: >
+      =CONCATENATE(J2,"-",I2,"-",TEXT(K2,"dd/mm/aaaa"),"-",AD2)
+    formula_pattern: "CONCATENATE(CS_Typology, '-', CS_ImpactedEntities, '-', TEXT(StartingDate,'dd/mm/aaaa'), '-', CS_HistoricalOriginID)"
+    source_fields: ["CS_Typology (col J)", "CS_ImpactedEntities (col I, código de entidad, NO literal 'HIST')", "StartingDate (col K)", "CS_HistoricalOriginID (col AD)"]
+    row_coverage: "10575 filas (CSV_Generated_BCM_SIM completo)"
+    observed_output_pattern: "<Typology>-<EntityCode>-<dd/mm/aaaa>-<OriginID> (SIN literal HIST, orden de componentes distinto)"
+    related_csv_column: "Reference"
+    candidate_status: residual_rule_candidate
+    matches_approved_rule: false
+    confidence: high
+    evidence_ids: ["evidence:etl.bcm_simulacros_updateeje"]
+    limitations:
+      - "NO reproduce la regla aprobada: falta el literal 'HIST', usa el código de entidad (CS_ImpactedEntities) como segundo componente en vez de mantenerlo fuera, y coloca CS_HistoricalOriginID al final en vez de en tercera posición. Ejemplo cacheado confirmado: 'PEI-EPSR.SYMEC.P01-A01-18/09/2008-3' — visiblemente distinto del ejemplo aprobado."
+      - "Se clasifica residual_rule_candidate (no object_specific_rule_candidate ni conflicting) porque coexiste en el MISMO workbook y para el MISMO objeto (Drills) que las Variantes A/B — no hay evidencia de que sirva a un objeto distinto, por lo que la hipótesis más simple es que es un intento o versión anterior de la fórmula, sustituida por A/B, no una regla para otro objeto."
+      - "No se ha determinado la fecha relativa de esta hoja frente a CSV_SIM/CSV_SIM_full — el nombre 'Generated_BCM' sugiere una etapa de generación intermedia (posiblemente la primera), pero esto es inferred, no observed."
+    open_question_ids: ["OQ-ETL-05"]
+
+decision_history:
+  - date: "no disponible en el repositorio — fecha de aprobación funcional original no documentada"
+    event: "Aprobación funcional de la regla de Reference por el consultor responsable de la migración (comunicada como contexto de este incremento)."
+    status: approved_functional_decision
+  - date: "2026-07-23"
+    event: "Registro documental de la decisión en este repositorio (AFD-DRILLS-REFERENCE-001), incorporación de este catálogo."
+    status: recorded

@@ -1,0 +1,37 @@
+# Secretos — nunca subir
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Datos — pueden ser pesados y/o sensibles (datos reales del cliente)
+inputs/etl/*
+!inputs/etl/.gitkeep
+inputs/csv_enablon/*
+!inputs/csv_enablon/.gitkeep
+inputs/mappings/*
+!inputs/mappings/.gitkeep
+inputs/entity_catalog/*
+!inputs/entity_catalog/.gitkeep
+inputs/incidents/*
+!inputs/incidents/.gitkeep
+
+outputs/*
+!outputs/**/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+sql/generated/*
+!sql/generated/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

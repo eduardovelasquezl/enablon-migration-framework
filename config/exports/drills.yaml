@@ -1,0 +1,244 @@
+# Definición ejecutable de exportación — simulacros.Drills (prototipo).
+#
+# Alcance: PRIMER incremento de implementación vertical, limitado a Drills.
+# Ver docs/specifications/v1.0/export/closing_recommendation.md para el
+# contexto de cierre de la fase documental que precede a este fichero.
+#
+# Toda columna aquí declarada está respaldada por evidencia real — no se ha
+# añadido ninguna columna sin (a) SQL confirmado, (b) ETL/mapping
+# confirmado, (c) CSV histórico confirmado, o (d) decisión funcional
+# aprobada. Las columnas del CSV real de Drills (36 en total, ver
+# `evidence:csv_enablon.drills` en
+# docs/specifications/v1.0/export/evidence/evidence_catalog.yaml) que NO
+# tienen evidencia suficiente en este incremento quedan fuera del
+# prototipo — ver `excluded_columns` al final de este fichero, con el
+# motivo concreto de cada una. No se inventa ninguna.
+
+object_id: drills
+module: simulacros
+migration_object: Drills
+prototype_status: review_only
+
+source:
+  connection: prevencion
+  sql_file: "sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql"
+  # Fuente única, sin joins — confirmado en
+  # export_readiness_matrix.md §7.1 ("Cobertura SQL: Alta — fuente única,
+  # sin joins, confirmada"). No se modifica esta SQL: no hace falta ningún
+  # JOIN adicional porque los catálogos de traducción (tipología, letra,
+  # entidad) se resuelven contra datos ya normalizados en este repositorio
+  # (ver `reference_data` más abajo), no contra tablas SQL adicionales.
+  max_rows: 2000000  # alineado con config/databases.yaml -> safety.max_rows_per_query
+
+output:
+  filename: drills.csv
+  encoding: utf-8
+  bom: false  # ver nota en exporter.py: sin evidencia de que Enablon exija BOM: se documenta como decisión provisional.
+  delimiter: "\t"  # el CSV histórico real (Bloque4) es tab-delimited, UTF-16LE con comillas — ver evidence_inventory.md §3 y Drills-22072026-41.csv.
+  quoting: minimal  # csv.QUOTE_MINIMAL; el histórico cita con comillas casi todo, pero no hay evidencia de que Enablon lo EXIJA para todas las columnas de este prototipo (ninguna contiene el delimitador salvo texto libre, que queda fuera del alcance).
+  line_terminator: "\r\n"
+  include_header: true
+
+invalid_row_policy: report_and_exclude_from_csv
+
+# --------------------------------------------------------------------------
+# Datos de referencia normalizados (catálogos), NUNCA leídos desde Excel en
+# tiempo de ejecución del pipeline. Los valores de `typology`, `letter` y
+# `workflow_status` de abajo se extrajeron UNA VEZ, de forma documentada,
+# leyendo en modo solo lectura (sin macros, sin fórmulas recalculadas:
+# `data_only=True`) las hojas Mapeo_Tipo_sim / Mapeo_Letra / Mapeo_Estado de
+# `inputs/_incoming_claude_web/Bloque1_ETL/ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx`
+# — evidencia ya citada como `evidence_status: confirmed` en
+# docs/specifications/v1.0/export/evidence/etl_catalog.yaml
+# (etl_transform:simulacros.mapeotiposim.typology_two_step_lookup,
+# etl_transform:simulacros.mapeoletra.letter_lookup_stale_label,
+# etl_transform:simulacros.mapeoestado.workflow_status_lookup). Esta
+# extracción NO se repite en cada ejecución del prototipo.
+# --------------------------------------------------------------------------
+reference_data:
+  entity_catalog_csv: "inputs/entity_catalog/entidades_mapeo_ANTIGUO_referencia_historica.csv"
+  # Catálogo aceptado explícitamente para Simulacros en config/modules.yaml:84
+  # (el catálogo "vigente" First_Axis NO aplica a Simulacros — ver CLAUDE.md).
+  entity_catalog_key_column: "IDUnidadOrg"
+  entity_catalog_value_column: "Code"
+  entity_catalog_do_not_migrate_literal: "No migra"
+
+  # IDTipo -> CS_Typology (DatoOrigen -> DatoDestino, Mapeo_Tipo_sim, 15 filas confirmadas)
+  typology_lookup:
+    365: "PEI"
+    366: "GEN"
+    367: "EVA"
+    368: "INTT"
+    378: "UEEX"
+    379: "PEI1"
+    380: "PEI2"
+    381: "PEI3"
+    383: "PIM"
+    400: "PEISEG"
+    601: "ISPS"
+    611: "PEX"
+    618: "FACT24"
+    619: "UTF"
+    620: "MAG"
+  typology_default_no_match: "NADA"  # confirmado: default literal del 2º XLOOKUP cuando no hay coincidencia.
+
+  # IDLetra -> CS_Letter (DatoOrigen -> DatoDestino, Mapeo_Letra, 7 filas + 1 nullcontrol)
+  letter_lookup:
+    258: "A"
+    259: "B"
+    373: "C"
+    374: "D"
+    375: "E"
+    377: "J.O."
+    622: "F"
+  letter_null_default: "NOLETTER-WRONG"  # literal EXACTO del nullcontrol de Mapeo_Letra fila 8 — no es un valor inventado por este prototipo.
+
+  # Estado -> CS_WorkflowStatus (DatoOrigen -> DatoDestino, Mapeo_Estado, 4 filas)
+  # Nótese que 'Terminado' y 'Aprobado' colapsan al mismo destino ('Validated').
+  # Sin default confirmado para un Estado no listado -- no se inventa uno: un
+  # Estado fuera de esta tabla queda `unresolved` y se reporta como warning.
+  workflow_status_lookup:
+    "Terminado": "Validated"
+    "En Curso": "Pending validation"
+    "Iniciado": "Draft"
+    "Aprobado": "Validated"
+
+  historical_data_origin_literal: "Prevención.ITP_SIM+ITP_SIM_ACCIONES_CORRECTORAS"
+  # Literal confirmado en etl_transform:simulacros.multifielduser.historical_user_lookup.
+
+fields:
+  - source: "IDTipo"
+    target: "CS_Typology"
+    required: true
+    transformation: "typology_lookup"
+    data_type: "string"
+    date_format: null
+    default: null  # el default ("NADA") vive en reference_data.typology_default_no_match, no aquí -- es un default DOCUMENTADO, no inventado por este prototipo.
+    mapping: "reference_data.typology_lookup"
+    validation: "must_resolve_or_use_documented_default"
+    evidence_id: "etl_transform:simulacros.mapeotiposim.typology_two_step_lookup"
+
+  - source: ["IDTipo", "IDSimulacro", "Fecha"]  # componentes de Reference, no columnas independientes
+    target: "Reference"
+    required: true
+    transformation: "build_reference"
+    data_type: "string"
+    date_format: "dd/MM/yyyy"
+    default: null
+    mapping: null
+    validation: "pattern:^[^-]+-HIST-[^-]+-\\d{2}/\\d{2}/\\d{4}$"
+    evidence_id: "AFD-DRILLS-REFERENCE-001"
+
+  - source: "Fecha"
+    target: "StartingDate"
+    required: true
+    transformation: "parse_starting_date"
+    data_type: "datetime"
+    date_format: "dd/MM/yyyy HH:mm"
+    default: null
+    mapping: null
+    validation: "required_valid_date"
+    evidence_id: "evidence:sql_source.simulacros_dataset"
+
+  - source: "IDSimulacro"
+    target: "CS_HistoricalOriginID"
+    required: true
+    transformation: "to_historical_id"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: null
+    validation: "required_non_null"
+    evidence_id: "evidence:sql_source.simulacros_dataset"
+
+  - source: "IDLetra"
+    target: "CS_Letter"
+    required: false
+    transformation: "letter_lookup"
+    data_type: "string"
+    date_format: null
+    default: null  # el default ("NOLETTER-WRONG") vive en reference_data.letter_null_default.
+    mapping: "reference_data.letter_lookup"
+    validation: "warn_if_unresolved"
+    evidence_id: "etl_transform:simulacros.mapeoletra.letter_lookup_stale_label"
+
+  - source: "IDUnidadOrg"
+    target: "CS_ImpactedEntities"
+    required: false
+    transformation: "resolve_entity"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: "reference_data.entity_catalog_csv"
+    validation: "warn_if_unresolved_or_conflicting"
+    evidence_id: "object_assessments/drills_entity_resolution_assessment.md"
+
+  - source: "Estado"
+    target: "CS_WorkflowStatus"
+    required: false
+    transformation: "workflow_status_lookup"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: "reference_data.workflow_status_lookup"
+    validation: "warn_if_unresolved"
+    evidence_id: "etl_transform:simulacros.mapeoestado.workflow_status_lookup"
+
+  - source: null
+    target: "CS_HistoricalDataOrigin"
+    required: true
+    transformation: "constant"
+    data_type: "string"
+    date_format: null
+    default: "Prevención.ITP_SIM+ITP_SIM_ACCIONES_CORRECTORAS"
+    mapping: null
+    validation: "constant_literal"
+    evidence_id: "etl_transform:simulacros.multifielduser.historical_user_lookup"
+
+# --------------------------------------------------------------------------
+# Columnas del CSV real (36 en total) EXCLUIDAS de este prototipo, con
+# motivo explícito. No es una lista de "pendiente" genérica -- cada fila es
+# una decisión de alcance, no un olvido.
+# --------------------------------------------------------------------------
+excluded_columns:
+  - column: ["NameEN", "NameFR", "NameES", "NameZH", "NameBR"]
+    reason: >
+      La fuente real de 'Titulo' no es una columna SQL directa de
+      DATASET SIMULACRO (ver etl_transform:simulacros.mapeotitulo.*) --
+      sin identificarla con certeza, incluir estos campos sería inventar
+      el origen.
+  - column: "CS_Duration"
+    reason: >
+      OQ-ETL-02 (abierta): no se ha localizado la fórmula que recombina
+      los 4 componentes de duración (meses/días/horas/minutos) en el
+      valor único que espera esta columna.
+  - column: ["CS_HistoricalAttachedFiles", "GroupsList", "CS_OtherContacts",
+             "CS_ExternalParticipants", "CS_HistoricalDrillAttendees",
+             "CS_OtherParticipants"]
+    reason: >
+      Requieren resolución de adjuntos/asistentes/grupos no evidenciada en
+      este incremento (fuera del alcance de un prototipo vertical).
+  - column: ["CS_EnvConsequences", "CS_FirefightingAndSpillContainment",
+             "CS_ObservationsFirefighting", "CS_AttitudeOfPersonnel",
+             "CS_ObservationsPersonnel", "CS_StaffTraining",
+             "CS_ObservationsTraining", "CS_Communication",
+             "CS_ObservationsCommunication"]
+    reason: >
+      Sin columna SQL correspondiente identificada en DATASET SIMULACRO
+      (ver sql/source_queries/Simulacros/) ni mapping documentado.
+  - column: "CS_HistoricalRecord"
+    reason: >
+      Valor observado en el CSV histórico ('Yes') sin confirmar si es
+      constante para todo el objeto o condicional -- no se asume.
+  - column: ["CS_HistoricalUserId", "CS_HistoricalUserName",
+             "CS_HistoricalDrillResponsibleName"]
+    reason: >
+      Requieren lookup contra ITP_USUARIOS (datos personales: nombre,
+      correo electrónico) -- fuera del alcance de este prototipo por
+      diseño, no por falta de mecanismo (el mecanismo SÍ está confirmado
+      en etl_transform:simulacros.multifielduser.historical_user_lookup).
+  - column: "Id"
+    reason: >
+      Identificador propio de Enablon, asignado DESPUÉS de la carga --
+      no es un campo que este prototipo (que genera un CSV PREVIO a
+      cualquier carga) pueda producir.

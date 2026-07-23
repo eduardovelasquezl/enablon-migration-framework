@@ -1,0 +1,117 @@
+# Catálogo de reglas de transformación ("ReglaEspecial" en los ETL originales)
+# y de validaciones de calidad de datos a aplicar antes de generar cualquier
+# CSV de carga. Ver CLAUDE.md sección "Catálogo de reglas" para el contexto
+# completo de cada una.
+
+transformation_rules:
+
+  nullcontrol:
+    aliases: ["Nullcontrol", "NullControl"]
+    descripcion: "Sustituye NULL/vacío por un valor destino por defecto."
+    parametros: ["valor_por_defecto"]
+    confirmado_con_datos_reales: true
+
+  concat:
+    aliases: ["Concat", "Text_concatenation", "Trans_Concat"]
+    descripcion: "Concatena 2 o más campos origen en un único campo destino."
+    parametros: ["separador", "campos_origen (lista, orden importa)"]
+    fan_in_maximo_confirmado: 4   # visto en AP-Con Ajuste Entidad
+    confirmado_con_datos_reales: true
+
+  barconcat:
+    aliases: ["Text_concatenation_bar"]
+    descripcion: "Variante de concat con separador tipo barra ' | '."
+    parametros: ["campos_origen"]
+    confirmado_con_datos_reales: false
+
+  titlefix:
+    aliases: ["Titlefix", "TitleFix", "AP_Title_std_fix", "CharacterFix"]
+    descripcion: >
+      Normalización de texto de título. CONFIRMADO con datos reales (MOC):
+      al menos hace stripping de comillas dobles ("). No se ha confirmado
+      ningún otro comportamiento. No tiene motor visible en ningún Excel
+      (fórmula) ni macro VBA de los 7 libros auditados.
+    riesgo_conocido: >
+      Pierde el significado de comillas usadas como símbolo de pulgadas
+      (8" -> 8) en textos técnicos. Decidir conscientemente si el motor
+      nuevo debe sustituir por 'in'/'pulg' en vez de borrar.
+    confirmado_con_datos_reales: partial
+
+  cloneorigin:
+    aliases: ["Map_CR_NEW_Base (cuando el campo destino = origen)"]
+    descripcion: "Passthrough directo del valor origen al destino."
+    variante_fan_out: >
+      Un origen -> N campos destino simultáneos (visto: 5 idiomas
+      EN/FR/ES/ZH/BR). Confirmado defecto real: en Eventos Nuevos, el fan-out
+      no traduce, y algunos campos ES quedan en inglés (ticket cliente #7437).
+    confirmado_con_datos_reales: true
+
+  replaceinreference:
+    descripcion: "Sustituye el valor origen usando una tabla de referencia cruzada (parámetro = nombre de la tabla)."
+    confirmado_con_datos_reales: false
+    pendiente: "validar contra un CSV real cuando se automatice el módulo donde aparece (visto en Safety Meetings, Aplicar_mapeo_NM)"
+
+  boolorigin:
+    descripcion: >
+      Convierte un flag Sí/No de origen en un valor categórico destino,
+      usando una tabla de referencia adicional (parámetro).
+    ejemplo_visto: "FugaGas (Yes/No) -> NoLFNature=IND, en Eventos Antiguos"
+    confirmado_con_datos_reales: false
+
+  lookup_simple:
+    descripcion: "Diccionario 1:1 DatoOrigen -> DatoDestino, sin transformación adicional."
+    confirmado_con_datos_reales: true
+
+  lookup_dinamico_dos_pasos:
+    descripcion: >
+      Resuelve código de origen -> descripción, y luego descripción -> Id
+      vigente del catálogo "en vivo" de Enablon (vía tabla Excel conectada,
+      p. ej. Power Query). MEJOR PATRÓN que el lookup estático — preferir
+      este enfoque en el motor nuevo, resolviendo siempre contra el catálogo
+      real de Enablon en el momento de la carga, no contra una copia congelada.
+    visto_en: ["safety_meetings (Mapeo_Letra, Mapeo_Nivel)", "moc (Map_ChangeType, Map_ChangeMotive)"]
+
+# Validaciones de calidad de datos a aplicar a CUALQUIER módulo antes de
+# generar el CSV final. Cada una debe generar un reporte, nunca corregir
+# el dato silenciosamente sin dejar rastro.
+data_quality_checks:
+
+  - id: duplicados_origen_id
+    descripcion: "Detectar CS_HistoricalOriginID (o equivalente) repetido con distinto Id de Enablon."
+    accion: "reportar, nunca deduplicar automáticamente sin revisión manual"
+    confirmado_en: ["eventos (585 casos)", "ops (423 casos)"]
+    excepcion_conocida: >
+      En Inspecciones/Observations, compartir el mismo OriginID a nivel de
+      inspección (varias observaciones de una misma inspección) es
+      CORRECTO por diseño, no un duplicado. Comprobar el nivel de agregación
+      esperado antes de reportar como defecto.
+
+  - id: cobertura_catalogo_entidades
+    descripcion: >
+      % de registros cuyo campo de entidad no resuelve contra el catálogo
+      real de Enablon (inputs/entity_catalog/). Umbral de alarma: >5%.
+    accion: "reportar por site, nunca asumir que es pérdida de datos sin desglosar"
+
+  - id: volumetria_por_site
+    descripcion: >
+      Comparar recuento origen SQL vs Enablon real, SIEMPRE desglosado por
+      site (nunca solo el total agregado). Ver hallazgo_1 en modules.yaml —
+      un total sano puede esconder un site con problema severo.
+    accion: "reportar tabla completa por site, marcar sites con exposición a hallazgo_1"
+
+  - id: integridad_referencial
+    descripcion: >
+      Para módulos con objetos relacionados (Eventos/Impactos/Investigaciones,
+      Inspecciones/Observations), comprobar que el campo de referencia cruzada
+      apunta a un registro existente en el objeto padre.
+    accion: "reportar % de huérfanos"
+
+  - id: campos_siempre_vacios
+    descripcion: "Campos destino 100% vacíos en la muestra real — candidatos a excluir del mapeo activo."
+    accion: "reportar, no eliminar del mapeo sin confirmar con el cliente"
+
+  - id: tags_origen_inconsistentes
+    descripcion: >
+      Valores de CS_HistoricalDataOrigin (o similar) que deberían ser el
+      mismo origen pero difieren por tildes/mayúsculas.
+    accion: "normalizar antes de cualquier agrupación, reportar las variantes encontradas"

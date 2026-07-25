@@ -51,3 +51,21 @@ def test_export_sample_contra_sql_server_real(tmp_path):
     # Confirmar por rutas absolutas que todo quedó bajo tmp_path -- nunca
     # bajo outputs/ real ni sobrescribiendo una ejecución anterior.
     assert str(result.output_dir).startswith(str(tmp_path))
+
+
+def test_export_sample_con_evidencia_contra_sql_server_real(tmp_path):
+    """Igual que el test anterior, pero además genera ambas evidencias
+    (Fase 12 del incremento de Evidence Engine). Sigue en modo `sample`
+    únicamente -- nunca se ejecuta `full` en un test."""
+    from src.evidence.collector import load_run
+    from src.evidence.workbook import build_workbook, save_workbook
+    from src.export.prototype.drills.pipeline import run
+
+    result = run(mode="sample", limit=10, output_root=tmp_path)
+    ctx = load_run(result.output_dir)
+
+    for audience in ("internal", "client"):
+        wb = build_workbook(ctx, audience)
+        path = save_workbook(wb, result.output_dir / f"evidence_{audience}.xlsx")
+        assert path.is_file()
+        assert str(path).startswith(str(tmp_path))

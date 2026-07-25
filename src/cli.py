@@ -15,10 +15,30 @@ import click
 
 from src.config import PROJECT_ROOT
 from src.db.exceptions import DatabaseError
+from src.evidence.collector import resolve_run_dir, load_run
+from src.evidence.models import EvidenceSourceError
+from src.evidence.workbook import build_workbook, save_workbook
 from src.export.prototype.drills.extractor import MODE_FULL, MODE_SAMPLE
 from src.export.prototype.drills.pipeline import run as run_drills_export
 
 _ALLOWED_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
+_AUDIENCES = ("internal", "client", "both")
+
+
+def _generate_evidence(run_dir: Path, audience: str) -> list[Path]:
+    """Genera evidence_internal.xlsx y/o evidence_client.xlsx para
+    `run_dir`, sin volver a consultar SQL Server -- todo sale de los
+    artefactos ya escritos por la exportación (ver `src.evidence.collector`).
+    """
+    ctx = load_run(run_dir)
+    audiences = ("internal", "client") if audience == "both" else (audience,)
+    written = []
+    for aud in audiences:
+        wb = build_workbook(ctx, aud)
+        path = run_dir / f"evidence_{aud}.xlsx"
+        save_workbook(wb, path)
+        written.append(path)
+    return written
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -71,7 +91,18 @@ def _validate_output_dir(value: str | None) -> Path | None:
     "--output-dir", type=str, default=None,
     help="Directorio raíz de salida (debe estar dentro de outputs/). Por defecto: outputs/prototype/drills/.",
 )
-def export_drills(mode: str, limit: int, confirm_full_export: bool, output_dir: str | None) -> None:
+@click.option(
+    "--generate-evidence", is_flag=True, default=False,
+    help="Genera evidence_internal.xlsx / evidence_client.xlsx al terminar la exportación.",
+)
+@click.option(
+    "--audience", type=click.Choice(_AUDIENCES), default="both", show_default=True,
+    help="Con --generate-evidence: qué versión(es) del Excel generar.",
+)
+def export_drills(
+    mode: str, limit: int, confirm_full_export: bool, output_dir: str | None,
+    generate_evidence: bool, audience: str,
+) -> None:
     """Genera drills.csv + validation_report.yaml + export_manifest.yaml
     (+ comparison_report.yaml si hay CSV histórico) para simulacros.Drills.
 
@@ -118,8 +149,57 @@ def export_drills(mode: str, limit: int, confirm_full_export: bool, output_dir: 
     if result.comparison_report_path:
         click.echo(f"comparison_report:  {result.comparison_report_path}")
 
+    if generate_evidence:
+        try:
+            written = _generate_evidence(result.output_dir, audience)
+        except EvidenceSourceError as exc:
+            click.echo(f"ERROR generando evidencia: {exc}", err=True)
+            sys.exit(1)
+        for path in written:
+            click.echo(f"evidencia:          {path}")
+
     if status in ("FAILED_VALIDATION", "FAILED_EXECUTION"):
         sys.exit(1)
+
+
+@cli.group()
+def evidence() -> None:
+    """Generación del Evidence Engine (Excel interno/cliente) a partir de
+    una ejecución ya completada -- nunca vuelve a consultar SQL Server."""
+
+
+@evidence.command("drills")
+@click.option(
+    "--run", "run_ref", type=str, default=None,
+    help="Ruta de la ejecución (outputs/prototype/drills/<timestamp>) o su run_id. "
+         "Por defecto: la ejecución más reciente.",
+)
+@click.option(
+    "--audience", type=click.Choice(_AUDIENCES), default="both", show_default=True,
+    help="Qué versión(es) del Excel generar.",
+)
+def evidence_drills(run_ref: str | None, audience: str) -> None:
+    """Regenera evidence_internal.xlsx / evidence_client.xlsx para una
+    ejecución existente de Drills, sin volver a consultar SQL Server."""
+    try:
+        run_dir = resolve_run_dir(run_ref)
+    except EvidenceSourceError as exc:
+        click.echo(f"ERROR: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo("=== Evidence Engine -- simulacros.Drills ===")
+    click.echo(f"  ejecucion:         {run_dir}")
+    click.echo(f"  audiencia:         {audience}")
+    click.echo("")
+
+    try:
+        written = _generate_evidence(run_dir, audience)
+    except EvidenceSourceError as exc:
+        click.echo(f"ERROR: {exc}", err=True)
+        sys.exit(1)
+
+    for path in written:
+        click.echo(f"evidencia:          {path}")
 
 
 if __name__ == "__main__":

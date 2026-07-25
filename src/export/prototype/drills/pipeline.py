@@ -9,9 +9,12 @@ es trabajo futuro, fuera del alcance de este incremento (ver
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
+import tempfile
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -71,6 +74,28 @@ class PipelineResult:
     validation_report: dict
     manifest: dict
     excluded_rows: list[dict]
+    issues_path: Path
+    issues: list[dict] = field(default_factory=list)
+
+
+def _write_issues_jsonl(issues: list[dict], path: Path) -> None:
+    """Escritura atómica de `issues.jsonl` -- un objeto JSON por línea, con
+    únicamente los campos del esquema acordado (Fase 8 del incremento de
+    Evidence Engine). Se escribe SIEMPRE, incluso con `issues` vacío (un
+    fichero vacío es una señal válida de "sin incidencias", no un error)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            for issue in issues:
+                f.write(json.dumps(issue, ensure_ascii=False))
+                f.write("\n")
+        os.replace(tmp_path, path)
+    except BaseException:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
 
 
 def _empty(value) -> bool:
@@ -90,15 +115,55 @@ def _serialize(value) -> str:
     return "" if value is None else str(value)
 
 
+def _issue(
+    issues: list[dict],
+    *,
+    run_id: str,
+    row_key: str,
+    historical_origin_id: str | None,
+    historical_data_origin: str,
+    category: str,
+    severity: str,
+    source_value,
+    mapped_value,
+    message: str,
+    evidence_id: str,
+    included_in_csv: bool,
+) -> None:
+    """Añade un registro al detalle de incidencias por fila (`issues.jsonl`,
+    ver Fase 8 del incremento de Evidence Engine). Nunca guarda la fila
+    completa -- solo los campos declarados en el esquema acordado."""
+    issues.append({
+        "run_id": run_id,
+        "row_key": row_key,
+        "historical_origin_id": historical_origin_id,
+        "historical_data_origin": historical_data_origin,
+        "category": category,
+        "severity": severity,
+        "source_value": None if source_value is None else str(source_value),
+        "mapped_value": None if mapped_value is None else str(mapped_value),
+        "message": message,
+        "evidence_id": evidence_id,
+        "included_in_csv": included_in_csv,
+    })
+
+
 def _transform_rows(
     df: pd.DataFrame,
     config: DrillsExportConfig,
     stats: RunStats,
+    run_id: str,
+    issues: list[dict],
 ) -> tuple[list[dict], list[dict]]:
     """Devuelve (filas_incluidas_en_csv, filas_excluidas_con_motivo).
 
     Cada fila fuente se procesa exactamente una vez -- nunca se descarta en
-    silencio: toda fila que no llega al CSV queda en `excluded`.
+    silencio: toda fila que no llega al CSV queda en `excluded`. Además de
+    los contadores de `stats` (ya existentes, sin cambios de comportamiento),
+    esta función añade a `issues` un registro por cada incidencia real
+    detectada -- nunca por filas sin problema (`RESOLVED` no genera
+    incidencia, por ejemplo). Es la única adición de este incremento sobre
+    el pipeline de exportación ya existente.
     """
     reference_data = config.reference_data
     entity_catalog = mappings_mod.get_entity_catalog(
@@ -121,16 +186,32 @@ def _transform_rows(
     for _, row in df.iterrows():
         stats.rows_read += 1
         stats.rows_transformed += 1
+        row_key = None  # se fija en cuanto se conoce historical_id, más abajo.
 
         typology_result = tr.resolve_typology(row.get("IDTipo"), typology_lookup, typology_default)
         historical_id = tr.to_historical_id(row.get("IDSimulacro"))
+        row_key = historical_id or f"row_{stats.rows_read}"
 
         raw_fecha = row.get("Fecha")
         starting_date = tr.parse_starting_date(raw_fecha)
         if _empty(raw_fecha):
             stats.dates_empty += 1
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="INVALID_DATE",
+                severity="review_required", source_value=raw_fecha, mapped_value=None,
+                message="Fecha ausente en el origen.",
+                evidence_id="evidence:sql_source.simulacros_dataset", included_in_csv=False,
+            )
         elif starting_date is None:
             stats.dates_invalid += 1
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="INVALID_DATE",
+                severity="review_required", source_value=raw_fecha, mapped_value=None,
+                message="Fecha presente pero no interpretable con los formatos soportados.",
+                evidence_id="evidence:sql_source.simulacros_dataset", included_in_csv=False,
+            )
         else:
             stats.dates_valid += 1
 
@@ -155,11 +236,29 @@ def _transform_rows(
             stats.entities_resolved += 1
         elif entity_result.status == mappings_mod.DO_NOT_MIGRATE:
             stats.entities_do_not_migrate += 1
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="ENTITY_DO_NOT_MIGRATE",
+                severity="not_migrated_by_design", source_value=entity_result.raw_source_value,
+                mapped_value=entity_result.value,
+                message="IDUnidadOrg resuelve a una entidad marcada explícitamente 'No migra'.",
+                evidence_id="object_assessments/drills_entity_resolution_assessment.md",
+                included_in_csv=reference_result.is_valid,
+            )
         elif entity_result.status == mappings_mod.UNRESOLVED:
             stats.entities_unresolved += 1
             stats.warnings.append(
                 f"IDSimulacro={historical_id or '?'}: IDUnidadOrg "
                 f"{entity_result.raw_source_value!r} no está en el catálogo de entidad."
+            )
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="ENTITY_UNRESOLVED",
+                severity="review_required", source_value=entity_result.raw_source_value,
+                mapped_value=None,
+                message="IDUnidadOrg no está en el catálogo de entidad normalizado.",
+                evidence_id="object_assessments/drills_entity_resolution_assessment.md",
+                included_in_csv=reference_result.is_valid,
             )
         elif entity_result.status == mappings_mod.CONFLICTING:
             stats.entities_conflicting += 1
@@ -167,8 +266,26 @@ def _transform_rows(
                 f"IDSimulacro={historical_id or '?'}: IDUnidadOrg "
                 f"{entity_result.raw_source_value!r} tiene más de un Code distinto en el catálogo."
             )
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="ENTITY_CONFLICTING",
+                severity="blocking_for_approval", source_value=entity_result.raw_source_value,
+                mapped_value=None,
+                message="IDUnidadOrg tiene más de un Code distinto en el catálogo de entidad.",
+                evidence_id="object_assessments/drills_entity_resolution_assessment.md",
+                included_in_csv=reference_result.is_valid,
+            )
         else:
             stats.entities_empty += 1
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="ENTITY_EMPTY",
+                severity="review_required", source_value=entity_result.raw_source_value,
+                mapped_value=None,
+                message="IDUnidadOrg ausente en el origen -- sin información de entidad para resolver.",
+                evidence_id="object_assessments/drills_entity_resolution_assessment.md",
+                included_in_csv=reference_result.is_valid,
+            )
 
         row_dict = {
             "CS_Typology": typology_result.value,
@@ -194,16 +311,47 @@ def _transform_rows(
                 stats.missing_historical_origin_id += 1
             if "missing_starting_date" in reference_result.missing_components:
                 stats.missing_starting_date += 1
+            exclusion_reason = ",".join(reference_result.missing_components)
             excluded.append({
                 **{k: _serialize(v) for k, v in row_dict.items()},
-                "exclusion_reason": ",".join(reference_result.missing_components),
+                "exclusion_reason": exclusion_reason,
             })
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="EXCLUDED_ROWS",
+                severity="review_required", source_value=None, mapped_value=None,
+                message=f"Fila excluida del CSV -- componente(s) ausente(s): {exclusion_reason}.",
+                evidence_id="AFD-DRILLS-REFERENCE-001", included_in_csv=False,
+            )
+            _issue(
+                issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                historical_data_origin=historical_data_origin, category="INVALID_REFERENCE",
+                severity="review_required", source_value=exclusion_reason, mapped_value=None,
+                message="No fue posible construir 'Reference': falta al menos un componente obligatorio.",
+                evidence_id="AFD-DRILLS-REFERENCE-001", included_in_csv=False,
+            )
 
     stats.duplicate_references = check_duplicate_references(reference_values_for_dup_check)
     if stats.duplicate_references:
         stats.warnings.append(
             f"{stats.duplicate_references} fila(s) comparten un valor de Reference con otra fila."
         )
+        seen_counts: dict[str, int] = {}
+        for value in reference_values_for_dup_check:
+            seen_counts[value] = seen_counts.get(value, 0) + 1
+        duplicated_values = {value for value, count in seen_counts.items() if count > 1}
+        for row_included in included:
+            if row_included["Reference"] in duplicated_values:
+                _issue(
+                    issues, run_id=run_id,
+                    row_key=row_included["CS_HistoricalOriginID"] or "?",
+                    historical_origin_id=row_included["CS_HistoricalOriginID"] or None,
+                    historical_data_origin=historical_data_origin, category="DUPLICATE_REFERENCE",
+                    severity="review_required", source_value=None,
+                    mapped_value=row_included["Reference"],
+                    message="Este valor de 'Reference' se repite en más de una fila incluida en el CSV.",
+                    evidence_id="AFD-DRILLS-REFERENCE-001", included_in_csv=True,
+                )
 
     return included, excluded
 
@@ -245,7 +393,8 @@ def run(
         )
     stats.warnings.extend(pre_check.warnings)
 
-    included_rows, excluded_rows = _transform_rows(extraction.dataframe, config, stats)
+    issues: list[dict] = []
+    included_rows, excluded_rows = _transform_rows(extraction.dataframe, config, stats, run_id, issues)
     stats.rows_exported = len(included_rows)
 
     csv_path = output_dir / config.output.filename
@@ -328,6 +477,9 @@ def run(
         comparison_report_path = output_dir / "comparison_report.yaml"
         write_yaml_atomic(comparison_report, comparison_report_path)
 
+    issues_path = output_dir / "issues.jsonl"
+    _write_issues_jsonl(issues, issues_path)
+
     logger.info(
         "Export drills completado (run_id=%s, filas_exportadas=%s, filas_excluidas=%s, resultado=%s)",
         run_id, stats.rows_exported, stats.rows_excluded, validation_report["status"]["result"],
@@ -344,4 +496,6 @@ def run(
         validation_report=validation_report,
         manifest=manifest,
         excluded_rows=excluded_rows,
+        issues_path=issues_path,
+        issues=issues,
     )

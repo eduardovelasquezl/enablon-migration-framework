@@ -76,11 +76,27 @@
       "Bash(timeout 60 \".venv/Scripts/python.exe\" main.py export drills --mode sample --limit 20)",
       "Bash(\".venv/Scripts/python.exe\" -m pytest tests/test_drills_export_prototype.py -q)",
       "Bash(RUN_DRILLS_EXPORT_INTEGRATION_TESTS=1 \".venv/Scripts/python.exe\" -m pytest tests/test_drills_export_integration.py -v)",
-      "Bash(\".venv/Scripts/python.exe\" main.py export drills --mode sample --limit 100)"
+      "Bash(\".venv/Scripts/python.exe\" main.py export drills --mode sample --limit 100)",
+      "Bash(\".venv/Scripts/python.exe\" -c \"import openpyxl; print\\(openpyxl.__version__\\)\")",
+      "Bash(\".venv/Scripts/python.exe\" -m pytest tests/ -q)",
+      "Bash(\".venv/Scripts/python.exe\" \"C:\\\\Users\\\\EDUARD~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-EduardoVel-squez-Desktop-Migracion-Enablon\\\\ed4b4ee1-72bb-49cd-928c-735a40d0471e\\\\scratchpad\\\\check_workbooks.py\")",
+      "Bash(\".venv/Scripts/python.exe\" \"C:\\\\Users\\\\EDUARD~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-EduardoVel-squez-Desktop-Migracion-Enablon\\\\ed4b4ee1-72bb-49cd-928c-735a40d0471e\\\\scratchpad\\\\check_client_secrets.py\")",
+      "Bash(rm -rf \"/c/Users/EduardoVelásquez/Desktop/Migracion_Enablon/outputs/prototype/drills\"/*)",
+      "Bash(\".venv/Scripts/python.exe\" main.py export drills --mode sample --limit 30 --generate-evidence)",
+      "Bash(rm -f outputs/prototype/drills/*/evidence_*.xlsx)",
+      "Bash(\".venv/Scripts/python.exe\" main.py evidence drills --audience internal)",
+      "Bash(\".venv/Scripts/python.exe\" main.py evidence drills --run outputs/prototype/drills/NOEXISTE)",
+      "Bash(\".venv/Scripts/python.exe\" main.py evidence drills --run \"C:\\\\Windows\")",
+      "Bash(\".venv/Scripts/python.exe\" main.py evidence drills --audience foo)",
+      "Bash(\".venv/Scripts/python.exe\" --version)",
+      "Bash(\".venv/Scripts/python.exe\" -m pytest tests/test_evidence_engine.py -v)",
+      "Bash(\".venv/Scripts/python.exe\" -m pytest tests/test_evidence_engine.py -q)",
+      "Bash(\".venv/Scripts/python.exe\" \"C:\\\\Users\\\\EDUARD~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-EduardoVel-squez-Desktop-Migracion-Enablon\\\\ed4b4ee1-72bb-49cd-928c-735a40d0471e\\\\scratchpad\\\\final_check.py\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\EduardoVelásquez\\Desktop\\Migracion_Enablon\\sql\\diagnostics",
-      "C:\\Users\\EduardoVelásquez\\Desktop\\Migracion_Enablon\\docs\\specifications\\v1.0\\export"
+      "C:\\Users\\EduardoVelásquez\\Desktop\\Migracion_Enablon\\docs\\specifications\\v1.0\\export",
+      "C:\\Users\\EduardoVelásquez\\Desktop\\Migracion_Enablon\\outputs\\prototype\\drills"
     ]
   }
 }

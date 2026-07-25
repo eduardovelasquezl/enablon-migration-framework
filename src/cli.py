@@ -20,6 +20,9 @@ from src.evidence.models import EvidenceSourceError
 from src.evidence.workbook import build_workbook, save_workbook
 from src.export.prototype.drills.extractor import MODE_FULL, MODE_SAMPLE
 from src.export.prototype.drills.pipeline import run as run_drills_export
+from src.query.catalog import DRILLS_FILTER_CATALOG
+from src.query.models import QueryEngineError
+from src.query.validator import compile_filter_tokens
 
 _ALLOWED_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 _AUDIENCES = ("internal", "client", "both")
@@ -99,9 +102,18 @@ def _validate_output_dir(value: str | None) -> Path | None:
     "--audience", type=click.Choice(_AUDIENCES), default="both", show_default=True,
     help="Con --generate-evidence: qué versión(es) del Excel generar.",
 )
+@click.option(
+    "--filter", "filters", multiple=True, default=(),
+    help=(
+        "Filtro reutilizable 'campo:operador:valor' (repetible; varios filtros se "
+        "combinan con AND). Operadores: eq, in (máx. 200 valores). Campos permitidos: "
+        "historical_origin_id, center_id, origin_org_unit_id, typology_id, letter_id, "
+        "workflow_status_source -- ver 'Filtered exports' en README.md."
+    ),
+)
 def export_drills(
     mode: str, limit: int, confirm_full_export: bool, output_dir: str | None,
-    generate_evidence: bool, audience: str,
+    generate_evidence: bool, audience: str, filters: tuple[str, ...],
 ) -> None:
     """Genera drills.csv + validation_report.yaml + export_manifest.yaml
     (+ comparison_report.yaml si hay CSV histórico) para simulacros.Drills.
@@ -120,6 +132,15 @@ def export_drills(
 
     resolved_output_dir = _validate_output_dir(output_dir)
 
+    # Los filtros se parsean y validan contra el catálogo cerrado ANTES de
+    # tocar SQL Server -- una petición inválida no debe llegar nunca al
+    # Query Runner (ver src/query/validator.py, sin dependencias de red).
+    try:
+        compiled_filters = compile_filter_tokens(filters, DRILLS_FILTER_CATALOG)
+    except QueryEngineError as exc:
+        click.echo(f"ERROR de filtro: {exc}", err=True)
+        sys.exit(1)
+
     click.echo("=== Prototype Export -- simulacros.Drills ===")
     click.echo(f"  objeto:            Drills (simulacros)")
     click.echo(f"  conexion:          prevencion")
@@ -127,12 +148,23 @@ def export_drills(
     click.echo(f"  limite (sample):   {limit if mode == MODE_SAMPLE else 'N/A'}")
     click.echo(f"  salida (raiz):     {resolved_output_dir or (PROJECT_ROOT / 'outputs' / 'prototype' / 'drills')}")
     click.echo(f"  estado:            review_only (NO aprobado para carga en Enablon)")
+    if compiled_filters:
+        click.echo(f"  filtros ({len(compiled_filters)}):")
+        for cf in compiled_filters:
+            click.echo(f"    - {cf.field}:{cf.operator}:{cf.manifest_value}")
+    else:
+        click.echo(f"  filtros:           ninguno")
     click.echo("")
 
     try:
-        result = run_drills_export(mode=mode, limit=limit, output_root=resolved_output_dir)
+        result = run_drills_export(
+            mode=mode, limit=limit, output_root=resolved_output_dir, compiled_filters=compiled_filters,
+        )
     except DatabaseError as exc:
         click.echo(f"ERROR de base de datos: {exc}", err=True)
+        sys.exit(1)
+    except QueryEngineError as exc:
+        click.echo(f"ERROR de filtro: {exc}", err=True)
         sys.exit(1)
     except (FileNotFoundError, ValueError, RuntimeError, FileExistsError) as exc:
         click.echo(f"ERROR: {exc}", err=True)
@@ -148,6 +180,8 @@ def export_drills(
     click.echo(f"export_manifest:    {result.manifest_path}")
     if result.comparison_report_path:
         click.echo(f"comparison_report:  {result.comparison_report_path}")
+    if result.manifest.get("query_filters", {}).get("generated_sql_file"):
+        click.echo(f"generated_query.sql: {result.output_dir / result.manifest['query_filters']['generated_sql_file']}")
 
     if generate_evidence:
         try:

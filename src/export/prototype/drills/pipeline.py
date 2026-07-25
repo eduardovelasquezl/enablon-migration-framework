@@ -9,6 +9,7 @@ es trabajo futuro, fuera del alcance de este incremento (ver
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -17,10 +18,13 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 
 import pandas as pd
 
 from src.config import PROJECT_ROOT
+from src.query.models import CompiledFilter
+from src.query.sql_builder import render_generated_sql_file
 
 from . import comparison as comparison_mod
 from . import mappings as mappings_mod
@@ -31,7 +35,9 @@ from .extractor import MODE_FULL, MODE_SAMPLE, extract_drills
 from .manifest import (
     RunStats,
     build_export_manifest,
+    build_query_filters_section,
     write_export_manifest,
+    write_text_atomic,
     write_validation_report,
     write_yaml_atomic,
 )
@@ -40,6 +46,8 @@ from .validator import (
     validate_output_csv,
     validate_pre_write,
 )
+
+GENERATED_SQL_FILENAME = "generated_query.sql"
 
 logger = logging.getLogger(__name__)
 
@@ -360,6 +368,7 @@ def run(
     mode: str = MODE_SAMPLE,
     limit: int = 100,
     output_root: str | Path | None = None,
+    compiled_filters: Sequence[CompiledFilter] | None = None,
 ) -> PipelineResult:
     if mode not in (MODE_SAMPLE, MODE_FULL):
         raise ValueError(f"Modo no soportado: {mode!r}")
@@ -377,11 +386,37 @@ def run(
     stats = RunStats(run_id=run_id, timestamp=timestamp, mode=mode, connection_name=config.source.connection)
 
     logger.info(
-        "Iniciando export drills (run_id=%s, modo=%s, conexion=%s, salida=%s)",
-        run_id, mode, config.source.connection, output_dir,
+        "Iniciando export drills (run_id=%s, modo=%s, conexion=%s, salida=%s, filtros=%s)",
+        run_id, mode, config.source.connection, output_dir, len(compiled_filters or ()),
     )
 
-    extraction = extract_drills(config, mode=mode, limit=limit)
+    extraction = extract_drills(config, mode=mode, limit=limit, compiled_filters=compiled_filters)
+
+    # Query Engine v0.1: si hubo filtros, escribir generated_query.sql
+    # (placeholders únicamente, nunca valores) -- documentado ANTES de
+    # cualquier posible fallo de validación posterior, porque describe
+    # exactamente lo que se ejecutó contra SQL Server en esta extracción.
+    generated_sql_file: str | None = None
+    generated_sql_sha256: str | None = None
+    if extraction.compiled_filters:
+        generated_sql_text = render_generated_sql_file(
+            sql_text=extraction.composed_sql_text,
+            source_sql_relpath=str(config.source.sql_file),
+            source_sql_sha256=extraction.sql_sha256,
+            run_id=run_id,
+            timestamp=timestamp,
+        )
+        generated_sql_path = output_dir / GENERATED_SQL_FILENAME
+        write_text_atomic(generated_sql_text, generated_sql_path)
+        generated_sql_file = GENERATED_SQL_FILENAME
+        generated_sql_sha256 = hashlib.sha256(generated_sql_text.encode("utf-8")).hexdigest()
+
+    query_filters_section = build_query_filters_section(
+        compiled_filters=extraction.compiled_filters,
+        source_sql_sha256=extraction.sql_sha256,
+        generated_sql_file=generated_sql_file,
+        generated_sql_sha256=generated_sql_sha256,
+    )
 
     pre_check = validate_pre_write(extraction.dataframe, config)
     if not pre_check.is_valid:
@@ -462,6 +497,7 @@ def run(
         limitations=limitations,
         open_questions=open_questions,
         sql_source_evidence_id="evidence:sql_source.simulacros_dataset",
+        query_filters=query_filters_section,
     )
     manifest_path = output_dir / "export_manifest.yaml"
     write_export_manifest(manifest, manifest_path)

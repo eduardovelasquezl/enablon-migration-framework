@@ -26,8 +26,9 @@ que ya está implementado hoy.
 | Objeto implementado | **Drills** (`simulacros.Drills`) — el único objeto con un flujo de exportación ejecutable hoy |
 | Estado del CSV generado | `prototype_status: review_only` — documento de revisión, no un fichero aprobado |
 | Carga automática en Enablon | No disponible (y no planificada en este repositorio, ver [ADR-006](docs/architecture/v1.0/decisions/ADR-006-csv-generation-not-direct-load.md)) |
-| Exportación filtrada por entidad o centro | Planificada, no disponible todavía |
-| Otros objetos de migración (Eventos, MOC, Bypass, OPS, Inspecciones, Safety Meetings, Action Plans...) | Analizados y documentados (`docs/specifications/v1.0/`), **sin flujo de exportación ejecutable todavía** |
+| Exportación filtrada (Drills) | **Disponible desde Query Engine v0.1** — `historical_origin_id`, `center_id`, `origin_org_unit_id`, `typology_id`, `letter_id`, `workflow_status_source`, operadores `eq`/`in` — ver sección 4.1 |
+| Exportación filtrada por entidad Enablon resuelta o por fecha | Planificada, no disponible todavía (ver sección 4.1) |
+| Otros objetos de migración (Eventos, MOC, Bypass, OPS, Inspecciones, Safety Meetings, Action Plans...) | Analizados y documentados (`docs/specifications/v1.0/`), **sin flujo de exportación ejecutable todavía** (incluye el Query Engine, hoy limitado a Drills) |
 | `export all` | No implementado |
 
 `approved_for_enablon_import` es siempre `false` en el manifiesto de cada
@@ -70,6 +71,69 @@ python main.py export drills --mode full --confirm-full-export
 > `--confirm-full-export` explícito. Los ejemplos de este README y sus
 > tests solo usan `--mode sample`.
 
+### 4.1 Filtered exports — Query Engine v0.1
+
+`export drills` admite `--filter campo:operador:valor`, repetible (varios
+filtros se combinan siempre con `AND`; no existe `OR` en v0.1):
+
+```bash
+python main.py export drills --filter historical_origin_id:eq:440
+
+python main.py export drills --filter center_id:eq:25
+
+python main.py export drills --filter center_id:in:25,30,45
+
+python main.py export drills \
+  --filter center_id:eq:25 \
+  --filter typology_id:in:1,2
+```
+
+**Los seis filtros permitidos** (catálogo cerrado -- cualquier otro nombre
+se rechaza antes de tocar SQL Server, ver `src/query/catalog.py`):
+
+| Filtro | Columna de origen (`ITP_SIMULACRO`) | Tipo |
+|---|---|---|
+| `historical_origin_id` | `IDSimulacro` | entero |
+| `center_id` | `IDCentro` | entero |
+| `origin_org_unit_id` | `IDUnidadOrg` | entero |
+| `typology_id` | `IDTipo` | entero |
+| `letter_id` | `IDLetra` | entero |
+| `workflow_status_source` | `Estado` | texto |
+
+**Operadores**: únicamente `eq` e `in` (`in` admite como máximo **200
+valores**, separados por comas, sin espacios obligatorios:
+`center_id:in:25,30,45`). Toda la SQL se compone en memoria y se ejecuta
+con parámetros nombrados de SQLAlchemy -- ningún valor se concatena nunca
+en el texto de la consulta (ver `src/query/sql_builder.py`). Con filtros
+activos, la ejecución escribe además `generated_query.sql` (SQL compuesta
+con placeholders, nunca con valores reales) dentro de la carpeta del run, y
+`export_manifest.yaml` gana una sección `query_filters` con los filtros
+aplicados y los hashes de la SQL fuente y de la generada.
+
+Importante -- alcance explícito de v0.1:
+
+- `typology_id`, `letter_id` y `workflow_status_source` filtran por el
+  **valor de origen** (`IDTipo`/`IDLetra`/`Estado` tal cual están en
+  `ITP_SIMULACRO`), **no** por el valor Enablon ya traducido
+  (`CS_Typology`/`CS_Letter`/`CS_WorkflowStatus`).
+- **No hay filtros de fecha todavía** -- la SQL de origen envuelve
+  `Fecha`/`FechaCreacion` con `FORMAT()` antes de exponerlas, así que un
+  filtro de fecha mal implementado compararía texto, no fechas; queda
+  pendiente de una estrategia verificada contra SQL Server real.
+- **No hay filtro por entidad Enablon resuelta** (`CS_ImpactedEntities`) --
+  esa columna se calcula después de la extracción cruzando `IDUnidadOrg`
+  contra el catálogo normalizado, no es una columna SQL. Sí puede
+  filtrarse por `origin_org_unit_id` (la clave de entrada, `IDUnidadOrg`),
+  nunca por el código de entidad ya resuelto.
+- **No hay comando `preview`** todavía (vista previa sin escribir
+  ficheros) -- cada ejecución filtrada sigue escribiendo el CSV completo y
+  el resto de artefactos.
+- Operadores `gte`, `lte`, `between`, `contains` -- no implementados en
+  v0.1.
+- Un filtro sobre un campo fuera del catálogo, con un operador no
+  permitido, o con un valor que no convierte al tipo declarado, se rechaza
+  ANTES de abrir ninguna conexión SQL (ver `src/query/validator.py`).
+
 ## 5. Salidas
 
 Cada ejecución escribe en una carpeta propia con marca de tiempo, nunca
@@ -79,9 +143,10 @@ sobrescribe una anterior:
 outputs/prototype/drills/<timestamp>/
     drills.csv               # CSV generado (UTF-8, revisión -- no aprobado para carga)
     validation_report.yaml   # conteos, estado de Reference/entidades/fechas, resultado
-    export_manifest.yaml     # trazabilidad técnica (hashes, reglas aplicadas, approved_for_enablon_import)
+    export_manifest.yaml     # trazabilidad técnica (hashes, reglas aplicadas, approved_for_enablon_import, query_filters)
     comparison_report.yaml   # comparación contra el CSV histórico real (si está disponible)
     issues.jsonl             # detalle de incidencias por fila (usado por el Evidence Engine)
+    generated_query.sql      # SQL compuesta con los --filter aplicados (placeholders, nunca valores) -- solo si hubo filtros
     evidence_internal.xlsx   # evidencia interna -- solo si se generó (ver sección 6)
     evidence_client.xlsx     # evidencia para el cliente -- solo si se generó (ver sección 6)
 ```
@@ -152,9 +217,9 @@ pasen.
 Nada de esta sección tiene un comando ejecutable hoy. Se documenta para
 dejar clara la dirección, no como uso actual:
 
-- Filtros de exportación por `IDCentro`.
-- Filtros de exportación por entidad.
+- Filtros de exportación por entidad Enablon ya resuelta (`CS_ImpactedEntities`).
 - Filtros de exportación por rango de fechas.
+- Operadores adicionales del Query Engine (`gte`, `lte`, `between`, `contains`).
 - Un comando `preview` (vista previa sin escribir ficheros).
 - Exportación de otros objetos de migración (Eventos, MOC, Bypass, OPS,
   Inspecciones, Safety Meetings, Action Plans...).

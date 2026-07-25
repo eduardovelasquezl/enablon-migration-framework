@@ -17,11 +17,14 @@ mayor que el coste de leer la tabla completa una vez.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Sequence
 
 import pandas as pd
 
 from src.db.query_runner import run_query
+from src.query.models import CompiledFilter
+from src.query.sql_builder import ComposedQuery, compose_filtered_sql
 
 from .config import DrillsExportConfig
 
@@ -40,6 +43,8 @@ class ExtractionResult:
     sql_sha256: str
     connection_name: str
     source_file: str
+    compiled_filters: tuple[CompiledFilter, ...] = field(default_factory=tuple)
+    composed_sql_text: str | None = None
 
 
 def _sql_hash(sql_text: str) -> str:
@@ -50,7 +55,19 @@ def extract_drills(
     config: DrillsExportConfig,
     mode: str = MODE_SAMPLE,
     limit: int = DEFAULT_SAMPLE_LIMIT,
+    compiled_filters: Sequence[CompiledFilter] | None = None,
 ) -> ExtractionResult:
+    """Extrae Drills, opcionalmente filtrado por `compiled_filters` (Query
+    Engine v0.1 -- ver `src.query`).
+
+    Sin `compiled_filters` (o con una secuencia vacía) el comportamiento es
+    IDÉNTICO al de antes de este incremento: se ejecuta `sql_text` tal cual
+    se leyó del fichero, sin ningún `WHERE` añadido. Con filtros, se
+    compone en memoria un `WHERE` sobre `sql_text` (nunca se reescribe el
+    fichero en disco) vía `src.query.sql_builder.compose_filtered_sql`, y
+    la SQL resultante se ejecuta con los valores como parámetros nombrados
+    de SQLAlchemy -- nunca concatenados.
+    """
     if mode not in (MODE_SAMPLE, MODE_FULL):
         raise ValueError(f"Modo de extracción no soportado: {mode!r} (usar 'sample' o 'full')")
     if mode == MODE_SAMPLE and limit <= 0:
@@ -59,9 +76,15 @@ def extract_drills(
     sql_text = config.source.sql_path.read_text(encoding="utf-8-sig")
     sql_hash = _sql_hash(sql_text)
 
+    compiled_filters = tuple(compiled_filters or ())
+    composed: ComposedQuery | None = None
+    if compiled_filters:
+        composed = compose_filtered_sql(sql_text, compiled_filters)
+
     df_full = run_query(
-        sql_text,
+        composed.sql_text if composed else sql_text,
         connection=config.source.connection,
+        params=composed.parameters if composed else None,
         source_file=str(config.source.sql_path),
     )
     rows_available = len(df_full)
@@ -82,4 +105,6 @@ def extract_drills(
         sql_sha256=sql_hash,
         connection_name=config.source.connection,
         source_file=str(config.source.sql_path),
+        compiled_filters=compiled_filters,
+        composed_sql_text=composed.sql_text if composed else None,
     )

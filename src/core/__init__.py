@@ -25,6 +25,16 @@ from src.core.contracts import (
     StageResult,
     StageStatus,
 )
+from src.core.data_workspace import (
+    DataRootNotConfiguredError,
+    DataWorkspace,
+    DataWorkspaceError,
+    PathEscapesWorkspaceError,
+    RequiredPathNotFoundError,
+    UnknownCategoryError,
+    UnknownProjectError,
+    get_default_data_workspace,
+)
 from src.core.exceptions import CoreError, PipelineConfigurationError, StageNotRegisteredError
 from src.core.orchestrator import PipelineOrchestrator
 from src.core.registry import StageRegistry
@@ -46,4 +56,12 @@ __all__ = [
     "CoreError",
     "PipelineConfigurationError",
     "StageNotRegisteredError",
+    "DataWorkspace",
+    "DataWorkspaceError",
+    "DataRootNotConfiguredError",
+    "UnknownProjectError",
+    "UnknownCategoryError",
+    "PathEscapesWorkspaceError",
+    "RequiredPathNotFoundError",
+    "get_default_data_workspace",
 ]

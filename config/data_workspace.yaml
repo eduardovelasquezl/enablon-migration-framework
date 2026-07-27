@@ -1,0 +1,23 @@
+# Declaración de categorías del workspace externo de datos (Sprint 7 —
+# Workspace Separation, ver docs/01-architecture/external-data-workspace.md).
+#
+# Este fichero NUNCA contiene la ruta real del workspace -- solo el nombre
+# de la variable de entorno que la resuelve (`root_env`) y la estructura
+# de categorías por proyecto. Cada desarrollador declara su propia ruta en
+# esa variable de entorno (nunca aquí, nunca en .env versionado).
+
+root_env: EMF_DATA_ROOT
+
+projects:
+  moeve:
+    base: projects/moeve
+    categories:
+      etl: ETL
+      csv_enablon: CSV_Enablon
+      mappings: Mappings
+      catalogs: Catalogs
+      errors: Errors
+      evidence: Evidence
+      sql: SQL
+      outputs: Outputs
+      archive: Archive

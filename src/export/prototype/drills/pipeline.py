@@ -23,6 +23,7 @@ from typing import Sequence
 import pandas as pd
 
 from src.config import PROJECT_ROOT
+from src.core.data_workspace import DataWorkspaceError, get_default_data_workspace
 from src.query.models import CompiledFilter
 from src.query.sql_builder import render_generated_sql_file
 
@@ -65,9 +66,41 @@ OUTPUT_COLUMNS = [
     "CS_HistoricalDataOrigin",
 ]
 
-HISTORICAL_CSV_PATH = (
-    "inputs/_incoming_claude_web/Bloque4_CSV_Enablon/Drills-22072026-41.csv"
-)
+
+# Sprint 7 (Workspace Separation): el CSV histórico de comparación ya NO
+# vive dentro del repositorio -- se resuelve, si existe, desde el
+# workspace externo de datos (EMF_DATA_ROOT, ver
+# docs/01-architecture/external-data-workspace.md). La ruta
+# "inputs/_incoming_claude_web/..." que vivía aquí antes de este
+# incremento ya no existe (ver
+# docs/07-developer-guide/local-data-recovery-checklist.md § 0) y, aunque
+# existiera, nunca debería resolverse de nuevo dentro del repositorio --
+# ver `_resolve_historical_csv_path` más abajo.
+HISTORICAL_CSV_PROJECT = "moeve"
+HISTORICAL_CSV_CATEGORY = "csv_enablon"
+HISTORICAL_CSV_RELATIVE_PATH = "Drills-22072026-41.csv"
+
+
+def _resolve_historical_csv_path() -> Path | None:
+    """Intenta resolver el CSV histórico de comparación desde el
+    workspace externo de datos. La comparación es y sigue siendo
+    OPCIONAL (comportamiento sin cambios respecto a antes de este
+    incremento): si `EMF_DATA_ROOT` no está declarado, o el fichero no
+    está presente en el workspace, se devuelve `None` y
+    `comparison_report.yaml` simplemente no se genera -- nunca se cae de
+    vuelta a leer un dato real dentro de `inputs/` (Sprint 7, § "no
+    fallback silencioso")."""
+    try:
+        workspace = get_default_data_workspace()
+        path = workspace.resolve(
+            project=HISTORICAL_CSV_PROJECT,
+            category=HISTORICAL_CSV_CATEGORY,
+            relative_path=HISTORICAL_CSV_RELATIVE_PATH,
+            required=False,
+        )
+    except DataWorkspaceError:
+        return None
+    return path if path.is_file() else None
 
 
 @dataclass
@@ -519,8 +552,8 @@ def run(
     write_export_manifest(manifest, manifest_path)
 
     comparison_report_path = None
-    historical_path = PROJECT_ROOT / HISTORICAL_CSV_PATH
-    if historical_path.is_file():
+    historical_path = _resolve_historical_csv_path()
+    if historical_path is not None:
         comparison_report = comparison_mod.build_comparison_report(
             historical_path=historical_path,
             generated_rows=included_rows,

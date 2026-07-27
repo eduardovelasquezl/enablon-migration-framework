@@ -1,0 +1,287 @@
+INFORME — DRILLS OPERATIONAL MVP (SPRINT 5)
+Proyecto: Enablon Migration Framework (EMF) / Migracion Historica a Enablon
+Fecha: 2026-07-27
+Tarea: Organizacion y consolidacion de configuracion para ejecutar por
+primera vez una extraccion completa (full) de Drills. Sin implementacion
+de codigo, sin modificar Query/Evidence/Export Engine ni src/.
+
+
+================================================================
+0. HALLAZGO CENTRAL (REENCUADRA TODA LA TAREA)
+================================================================
+
+Antes de inventariar nada, se encontro que YA EXISTE una ejecucion
+completa y exitosa del pipeline de Drills en modo sample:
+outputs/prototype/drills/20260723T195418Z/ -- status.result: SUCCESS,
+0 errores, 0 warnings, 100/100 filas exportadas, con drills.csv,
+validation_report.yaml, export_manifest.yaml, comparison_report.yaml,
+issues.jsonl, evidence_internal.xlsx y evidence_client.xlsx ya generados
+y correctos. Esto significa que el prototipo NO esta por probar -- YA
+ESTA PROBADO con datos reales. El resto de este informe se apoya en esa
+evidencia, no en inferencia sobre si el codigo "deberia" funcionar.
+
+
+================================================================
+1. FLUJO OPERATIVO
+================================================================
+
+  Fuente SQL (config/databases.yaml + .env, conexion "prevencion")
+    -> Query (sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql)
+    -> Extraccion (extractor.py -- sample trunca local; full exporta todo)
+    -> Transformacion + mapeo (transformations.py, mappings.py, drills.yaml)
+    -> Validacion pre-escritura (validator.py)
+    -> Escritura CSV (exporter.py)
+    -> Validacion post-escritura (validator.py)
+    -> validation_report.yaml / export_manifest.yaml (manifest.py)
+    -> comparison_report.yaml (comparison.py, si hay historico)
+    -> issues.jsonl (pipeline.py)
+    -> [opcional] Evidence Engine: evidence_internal.xlsx / evidence_client.xlsx
+
+Un unico comando (python main.py export drills ...) ejecuta toda la
+cadena sin pasos manuales intermedios (salvo, opcionalmente, generar
+evidencia).
+
+
+================================================================
+2. CONFIGURACION REQUERIDA Y SU ESTADO
+================================================================
+
+Las 9 piezas de configuracion necesarias (conexion SQL, query, mapeo de
+campos, catalogos de referencia, formato de salida, politica de
+validacion, registro de proyecto/modulo, directorio de salida, CSV
+historico de comparacion) YA ESTAN TODAS presentes, configuradas con
+datos reales y confirmadas funcionales por la ejecucion del 2026-07-23.
+Ninguna requiere configuracion nueva para repetir el resultado ya
+obtenido en modo sample.
+
+
+================================================================
+3. DEPENDENCIAS
+================================================================
+
+Cadena de dependencia real (no de importancia):
+
+  .env -> databases.yaml -> extractor.py -> transformations.py/mappings.py
+    -> (entity_catalog.csv, reference_data de drills.yaml)
+    -> validator.py (pre) -> exporter.py -> validator.py (post)
+    -> manifest.py (validation_report -> export_manifest)
+    -> comparison.py (opcional) -> pipeline.py (issues.jsonl)
+    -> evidence/collector.py + workbook.py (opcional, ultimo eslabon)
+
+Ninguna etapa se salta ni se reordena -- el pipeline ya implementado
+respeta esta cadena exactamente.
+
+
+================================================================
+4. DUPLICIDADES Y CONFIGURACION DISPERSA DETECTADAS
+================================================================
+
+  1. config/exports/drills.yaml mezcla 6 responsabilidades en un unico
+     fichero (proyecto, fuente, plantilla, mapeo de valores, reglas de
+     campo, validacion) -- manejable con un objeto, riesgo señalado para
+     cuando llegue un segundo.
+  2. HISTORICAL_CSV_PATH (ruta del CSV historico de comparacion) es una
+     CONSTANTE PYTHON dentro de pipeline.py, no una entrada YAML --
+     inconsistente con el resto de la configuracion de Drills.
+  3. config/modules.yaml mezcla registro de modulo con catalogos de
+     traduccion IDCentro->Site (idcentro_map_itp/idcentro_map_gct) --
+     son conceptualmente catalogos, no metadatos de modulo.
+  4. config/validation_rules.yaml mezcla un catalogo documental de reglas
+     ETL legado (no ejecutado por el prototipo) con validaciones de
+     calidad de datos genericas (tampoco conectadas a ningun motor
+     todavia).
+  5. sql/source_queries/Simulacros/ tiene 4 ficheros sin usar por el
+     pipeline actual (SQLQuery4.sql, SQLQuery6.sql, SQLQuery9.sql,
+     Acciones correctoras.sql), sin documentacion de su proposito.
+  6. inputs/mappings/ e inputs/etl/ estan declarados en
+     config/settings.yaml pero VACIOS -- el contenido real equivalente
+     vive en inputs/_incoming_claude_web/, nunca consolidado en las
+     rutas canonicas declaradas.
+  7. inputs/entity_catalog/ tiene 3 ficheros; Drills solo usa 1
+     (entidades_mapeo_ANTIGUO_referencia_historica.csv) -- los otros 2
+     son el catalogo vigente para OTROS modulos, deliberadamente no
+     aplicable a Simulacros (esquema historico ya cerrado, segun
+     CLAUDE.md) -- no es un error, pero podria parecerlo sin este
+     documento.
+
+Ninguna de estas 7 es bloqueante para ejecutar Drills.
+
+
+================================================================
+5. INVENTARIO COMPLETO
+================================================================
+
+  - Configuracion existente y funcional: conexion SQL, .env, todo
+    drills.yaml, la query de origen, el catalogo de entidad, el CSV
+    historico de comparacion, y todo el codigo de
+    src/export/prototype/drills/, src/evidence/, src/query/, src/db/.
+  - Configuracion reutilizable (para un segundo objeto): el patron
+    output:/invalid_row_policy, config/databases.yaml, la separacion
+    reference_data/fields, el catalogo cerrado de filtros del Query
+    Engine.
+  - Configuracion obsoleta o sin confirmar: los 3 ficheros SQL sin usar
+    en Simulacros; las reglas de validation_rules.yaml marcadas
+    confirmado_con_datos_reales: false.
+  - Configuracion que falta: una ejecucion real en modo full (nunca
+    realizada); HISTORICAL_CSV_PATH declarado en YAML en vez de en
+    codigo; un manifiesto que aclare que SQL de Simulacros esta en uso.
+    Ninguna de estas bloquea la ejecucion.
+
+
+================================================================
+6. ESTRUCTURA DE CONFIGURACION PROPUESTA (SIN MOVER ARCHIVOS)
+================================================================
+
+  config/
+  +-- projects/moeve/{project.yaml, modules.yaml}
+  +-- sources/{databases.yaml, site_catalogs.yaml}
+  +-- queries/simulacros.yaml       (declara objeto->fichero .sql->hash
+  |                                   esperado, el .sql en si sigue en
+  |                                   sql/source_queries/)
+  +-- mappings/drills.yaml           (reference_data + fields)
+  +-- templates/drills.yaml           (output: + excluded_columns +
+  |                                    HISTORICAL_CSV_PATH)
+  +-- validation/{drills.yaml, validation_rules.yaml}
+
+Documentado, no ejecutado en esta tarea (el encargo pide documentar
+primero). Su beneficio real se materializa con un segundo objeto
+migrable -- con un unico objeto, el fichero unico actual no es un
+problema urgente (mismo principio "No Abstraction Without a Real
+Consumer" ya aplicado en el resto de la documentacion EMF de este
+repositorio).
+
+
+================================================================
+7-8. ARTEFACTOS Y VALIDACIONES
+================================================================
+
+7 artefactos posibles por ejecucion (drills.csv, validation_report.yaml,
+export_manifest.yaml, issues.jsonl obligatorios; comparison_report.yaml
+condicional al historico; evidence_*.xlsx condicional a
+--generate-evidence; generated_query.sql condicional a --filter). Todas
+las validaciones (pre-escritura, post-escritura, duplicados de
+Reference, comparacion cuantitativa) ya se ejecutan sin cambios
+necesarios para modo full.
+
+
+================================================================
+9. CHECKLIST OPERATIVA (ORDEN DE DEPENDENCIA REAL)
+================================================================
+
+  [x] Fuente            -- config/databases.yaml + .env               IMPLEMENTADO Y CONFIGURADO
+  [x] Query validada      -- SQLQuery - DATASET SIMULACRO.sql          IMPLEMENTADO Y VALIDADO
+  [x] Catalogos            -- entity_catalog + reference_data          IMPLEMENTADO Y CONFIGURADO
+  [x] Mapping completo       -- 7 reglas / 8 columnas en alcance        IMPLEMENTADO (alcance definido)
+  [x] Template definido       -- output: block de drills.yaml           IMPLEMENTADO Y VALIDADO
+  [x] Validation Profile        -- invalid_row_policy + validator.py    IMPLEMENTADO Y VALIDADO
+  [x] Proyecto                   -- object_id/module + modules.yaml     IMPLEMENTADO (disperso, no bloqueante)
+  [x] Output                      -- outputs/prototype/drills/          IMPLEMENTADO Y FUNCIONAL
+  [x] Manifest                     -- export_manifest.yaml               IMPLEMENTADO Y VALIDADO
+  [x] Evidence                      -- evidence_internal/client.xlsx     IMPLEMENTADO Y VALIDADO
+  [ ] Reports                        -- resumen ejecutivo distinto       NO EXISTE COMO ARTEFACTO (ver nota)
+  [ ] Ejecucion en modo FULL          -- nunca realizada                 PENDIENTE -- unico paso real
+
+Nota "Reports": no existe un artefacto tecnico distinto de
+evidence_client.xlsx, que ya cumple ese proposito. Si se necesita un
+resumen ejecutivo adicional, es comunicacion humana, no configuracion o
+codigo faltante.
+
+TODOS LOS PUNTOS MARCADOS ESTAN, A LA VEZ, IMPLEMENTADOS EN CODIGO Y
+CONFIGURADOS CON DATOS REALES -- el unico punto genuinamente pendiente es
+la ejecucion en modo full en si.
+
+
+================================================================
+10. CAMINO MAS CORTO AL PRIMER drills.csv COMPLETO
+================================================================
+
+  1. Confirmar conectividad de red real a SQL Server desde el entorno de
+     ejecucion -- CLAUDE.md documenta explicitamente que el entorno de
+     analisis actual NO tiene esa conectividad; la ejecucion exitosa del
+     23/07 se hizo desde otro entorno.
+  2. Confirmar que .env sigue teniendo credenciales de solo lectura
+     validas para prevencion.
+  3. Ejecutar:
+     python main.py export drills --mode full --confirm-full-export --generate-evidence --audience both
+  4. Revisar validation_report.yaml (status.result en
+     SUCCESS/SUCCESS_WITH_WARNINGS).
+  5. Revisar comparison_report.yaml contra el historico.
+  6. Entregar drills.csv + evidence_client.xlsx -- sigue
+     prototype_status: review_only, approved_for_enablon_import: false.
+
+No hace falta ninguna configuracion nueva entre el paso 2 y el 3.
+
+
+================================================================
+11. QUE NO SE HIZO EN ESTA TAREA
+================================================================
+
+No se ejecuto la exportacion en modo full (accion real, fuera del
+alcance de "organizacion y consolidacion"). No se movio ningun fichero a
+la estructura propuesta. No se modifico src/, Query/Evidence/Export
+Engine, ni se implemento el Framework Core. No se creo ninguna ADR
+(tarea operativa, sin decision arquitectonica nueva).
+
+
+================================================================
+12. ARCHIVOS CREADOS Y MODIFICADOS
+================================================================
+
+CREADOS:
+  - docs/01-architecture/drills-operational-mvp.md
+  - reports/executions/2026-07-27/Informe-Drills-Operational-MVP.md  (este informe)
+  - reports/executions/2026-07-27/Informe-Drills-Operational-MVP.txt (mismo informe, texto plano)
+
+MODIFICADOS: ninguno.
+
+Ningun archivo de src/, tests/, config/, sql/, inputs/, outputs/ fue
+tocado ni movido.
+
+
+================================================================
+13. RUTAS DE LOS INFORMES
+================================================================
+
+  MD:  reports/executions/2026-07-27/Informe-Drills-Operational-MVP.md
+  TXT: reports/executions/2026-07-27/Informe-Drills-Operational-MVP.txt
+
+Contenido identico entre ambos -- solo difiere el formato (Markdown vs.
+texto plano con separadores ASCII).
+
+
+================================================================
+14. RESULTADO DE VALIDACIONES
+================================================================
+
+  [OK] No se modifico src/, Query/Evidence/Export Engine.
+  [OK] No se implemento el Framework Core.
+  [OK] No se movio ningun fichero de configuracion.
+  [OK] Checklist ordenada por dependencia real, no por importancia.
+  [OK] Cada punto de la checklist indica su estado real (implementado vs.
+       pendiente), sustentado en evidencia (la ejecucion del
+       2026-07-23), no en suposicion.
+  [OK] Camino minimo propuesto sin mejoras arquitectonicas, motores
+       nuevos ni plugins.
+
+
+================================================================
+15. git status --short
+================================================================
+
+  ?? docs/01-architecture/drills-operational-mvp.md   (nuevo)
+  ?? reports/executions/2026-07-27/Informe-Drills-Operational-MVP.md   (nuevo)
+  ?? reports/executions/2026-07-27/Informe-Drills-Operational-MVP.txt  (nuevo)
+
+(el resto de docs/* y reports/executions/2026-07-27/* de tareas
+anteriores ya figuraban sin trackear antes de esta tarea)
+
+
+================================================================
+16. git diff --stat
+================================================================
+
+No aplica de forma util: ningun fichero del repositorio esta trackeado
+todavia en git. Verificado con "git diff --no-index --check": sin
+errores de espacio en blanco (solo aviso de normalizacion LF->CRLF).
+
+No se realizo commit de ningun cambio.

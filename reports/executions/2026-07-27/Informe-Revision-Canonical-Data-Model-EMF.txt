@@ -1,0 +1,386 @@
+INFORME — REVISION ARQUITECTONICA DEL CANONICAL DATA MODEL (EMF)
+Proyecto: Enablon Migration Framework (EMF)
+Fecha: 2026-07-27
+Tarea: Aplicar las 10 correcciones exigidas por la Architectural Design
+Review sobre docs/01-architecture/canonical-data-model.md y
+docs/02-adr/ADR-014-canonical-data-model.md. Sin implementacion de codigo.
+
+
+================================================================
+1. CORRECCIONES REALIZADAS
+================================================================
+
+# | Problema detectado | Correccion aplicada
+--|---------------------|----------------------
+1 | record_id colisionaba entre dos filas fisicas distintas que
+    compartian source_record_id.
+  -> Se redefine record_id como hash de la OCURRENCIA FISICA
+     (occurrence_key), no del source_record_id de negocio en solitario.
+     Se añade duplicate_group_key para agrupar duplicados sin
+     fusionarlos. Invariante duro añadido: dos ocurrencias fisicas
+     distintas nunca comparten record_id.
+
+2 | CanonicalField.original_value y Provenance.original_value
+    duplicaban el mismo valor.
+  -> Se elimina Provenance.original_value. CanonicalField.original_value
+     queda como unica fuente de verdad. Se añade Provenance.evidence_excerpt
+     (opcional, solo fuentes documentales) para el caso en que hace falta
+     mas contexto que el valor del campo.
+
+3 | CanonicalField se presentaba como "entidad con identidad propia" y a
+    la vez "sin identidad global" -- contradiccion sin resolver.
+    Relationship.relationship_id sin decidir.
+  -> Se introduce una taxonomia explicita de tres niveles de identidad
+     (global con coleccion propia / local sin coleccion propia / sin
+     identidad). CanonicalField queda en el nivel local (coordenada
+     record_id+field_name). Se resuelve que Relationship si necesita
+     relationship_id, pero de alcance local (nunca una coleccion global).
+
+4 | Un unico CanonicalRecord.status mezclaba progreso de pipeline con
+    resultado final.
+  -> Se separa en processing_stage (extracted->normalized->mapped->
+     transformed->validated->exported) y disposition (pending->
+     exportable|excluded|failed). Sin maquina de estados formal.
+
+5 | Execution dependia de un unico object_type, incompatible con
+    ejecuciones multi-objeto.
+  -> Se elimina object_type de Execution (queda solo en CanonicalRecord).
+     Se añaden scope/object_types, ambos opcionales e informativos.
+
+6 | source_type presentado de forma ambigua, sin incluir api.
+  -> Se declara explicitamente como vocabulario controlado pero ABIERTO
+     (un Connector nuevo declara su propio valor sin tocar el Core). Se
+     añade api con su fila de locator propia.
+
+7 | Revision humana sin trazabilidad de quien/cuando.
+  -> Se añaden reviewed_by/reviewed_at, opcionales, presentes solo tras
+     una revision.
+
+8 | Forma de TransformationTrace (unica vs. secuencia) resuelta
+    implicitamente sin evidencia suficiente.
+  -> Se declara explicitamente como decision diferida a una futura
+     Mapping Specification -- no se resuelve en este documento.
+
+9 | Documento y ADR-014 marcados "Approved Design" sin revision formal
+    previa.
+  -> Ambos pasan a PROPOSED. Se añade §28 "Historial de revision" al
+     documento de arquitectura, y una seccion "Revision del 2026-07-27"
+     al Context de la ADR.
+
+10| Recomendacion de siguiente paso saltaba directamente a un segundo
+    Connector.
+  -> Corregida al orden aprobado: (1) aprobar CDM, (2) Mapping
+     Specification, (3) Enablon Template Contract, (4) implementar
+     Framework Core, (5) validar con consumidores reales, (6) segundo
+     Connector. Documentado en ADR-014 §Consequences.
+
+
+================================================================
+2. DECISIONES FINALES
+================================================================
+
+- Identidad en 4 conceptos (no 3): record_id (tecnica, hash de la
+  ocurrencia fisica, nunca colisiona entre filas fisicas distintas),
+  source_record_id (del origen, puede repetirse -- es la señal del
+  duplicado), functional_key (funcional, opcional), duplicate_group_key
+  (agrupacion de duplicados, opcional). Execution.execution_id sigue
+  siendo un uuid4 aleatorio, concepto aparte.
+
+- Estrategia de record_id: record_id = "record:" + slugify(object_type)
+  + "." + slugify(source_system) + "." + short_hash(occurrence_key),
+  donde occurrence_key prioriza una clave fisica nativa
+  (identity_basis: physical_key), cae a clave de negocio + ordinal de
+  extraccion (source_key_with_ordinal) si no existe, y finalmente al
+  locator (locator_derived) para fuentes sin ninguna clave estable. El
+  algoritmo exacto del ordinal se deja como decision de implementacion --
+  lo que se fija es el invariante de no colision.
+
+- Taxonomia de identidad en 3 niveles: (a) global con coleccion propia --
+  Execution, CanonicalRecord, Issue; (b) local sin coleccion propia --
+  CanonicalField (coordenada), Relationship (relationship_id local);
+  (c) sin identidad -- Provenance, TransformationTrace.
+
+- Provenance sin duplicar valor: localiza y explica (source_type,
+  locator, extraction_method, confidence, captured_at, evidence_excerpt?),
+  nunca vuelve a guardar el valor extraido.
+
+- processing_stage + disposition como dos campos obligatorios
+  independientes en CanonicalRecord, sin maquina de estados formal.
+
+- Execution.scope/object_types opcionales, en vez de un object_type
+  obligatorio -- object_type vive exclusivamente en CanonicalRecord.
+
+- source_type es vocabulario abierto, ilustrado con sql_server, excel,
+  csv, word, pdf, json, api -- nunca una enumeracion cerrada del Core.
+
+- Revision humana: 5 atributos embebidos en CanonicalField
+  (review_required, review_status, review_note, reviewed_by?,
+  reviewed_at?). Sigue sin existir una entidad Review.
+
+- TransformationTrace: forma exacta (objeto unico vs. secuencia)
+  explicitamente diferida a la futura Mapping Specification.
+
+- Status: canonical-data-model.md y ADR-014 quedan en PROPOSED hasta que
+  esta revision se de por cerrada y aprobada.
+
+
+================================================================
+3. EJEMPLO CORREGIDO DE REGISTRO DUPLICADO
+================================================================
+
+Añadido como nueva §20.2 del documento de arquitectura:
+
+  CanonicalRecord  (primera ocurrencia fisica)
+    record_id: record:event.prevencion_itp.7f1a2b3c4d      <- DISTINTO del segundo
+    object_type: "Event"
+    source_record_id: "10532"                                <- IGUAL en ambos
+    duplicate_group_key: event.prevencion_itp.10532          <- IGUAL en ambos
+    identity_basis: source_key_with_ordinal
+    source_reference: { source_system: "prevencion_itp", source_object: "ITP_EVENTOS",
+                         extraction_method: "sql_query" }
+    processing_stage: extracted
+    disposition: pending
+
+  CanonicalRecord  (segunda ocurrencia fisica -- el duplicado)
+    record_id: record:event.prevencion_itp.9c8d7e6f5a      <- DISTINTO del primero
+    object_type: "Event"
+    source_record_id: "10532"                                <- IGUAL que el anterior
+    duplicate_group_key: event.prevencion_itp.10532          <- IGUAL que el anterior
+    identity_basis: source_key_with_ordinal
+    processing_stage: extracted
+    disposition: pending
+
+Issue generada por el Validation Engine al detectar el grupo:
+
+  Issue
+    stage: validation
+    severity: warning
+    code: DUPLICATE_SOURCE_RECORD_ID
+    message: "2 registros comparten duplicate_group_key=event.prevencion_itp.10532
+              (source_record_id=10532) -- defecto sistemico ya confirmado en
+              Eventos/OPS, ver CLAUDE.md."
+    record_id: record:event.prevencion_itp.7f1a2b3c4d
+    status: open
+    blocks_export: false
+
+Ningun record_id colisiona; la duplicacion queda visible y trazable, no
+oculta ni fusionada -- cumple el invariante exigido por la revision.
+
+
+================================================================
+4. EJEMPLO CORREGIDO DE PROVENANCE
+================================================================
+
+Extracto del ejemplo PDF/Word (§22 del documento), mostrando
+evidence_excerpt reemplazando la duplicacion de original_value eliminada:
+
+  fields.ResponsibleRole:
+    original_value: "El Jefe de Turno, o en su ausencia el Responsable de Planta"  <- UNICA fuente de verdad
+    normalized_value: "Jefe de Turno / Responsable de Planta"
+    data_type: string
+    provenance:
+      source_type: pdf
+      locator: { file: "PR-EMG-014.pdf", page: 4, block_or_table: "parrafo 2" }
+      extraction_method: native_text
+      confidence: 0.55
+      evidence_excerpt: "En caso de emergencia, la coordinacion inicial corresponde
+                          al Jefe de Turno, o en su ausencia el Responsable de Planta,
+                          quien activara el protocolo PR-EMG-014 seccion 3."
+                          -- parrafo completo, mas amplio que original_value -- permite
+                          -- verificar la interpretacion en contexto SIN duplicar el valor
+    review_required: true
+    review_status: pending
+    reviewed_by: null
+    reviewed_at: null
+
+Provenance ya no contiene original_value propio: solo localiza (locator),
+explica (extraction_method, confidence) y, cuando aporta algo real, amplia
+el contexto (evidence_excerpt) -- nunca vuelve a guardar el valor del campo.
+
+
+================================================================
+5. MODELO CONCEPTUAL ACTUALIZADO
+================================================================
+
+  Execution (execution_id, started_at, mode, status, scope?, object_types?)
+    |
+    | produce N -- puede ser de varios object_type distintos en la misma Execution
+    v
+  CanonicalRecord (record_id, object_type, source_record_id,
+                   functional_key?, duplicate_group_key?, identity_basis,
+                   source_reference, processing_stage, disposition, metadata)
+    |
+    +-- fields: { field_name -> CanonicalField }   -- (record_id, field_name), sin identidad global
+    |              +-- original_value / normalized_value / transformed_value
+    |              +-- data_type (detectado)
+    |              +-- provenance                (embebida, sin identidad)
+    |              +-- transformation_trace?      (embebida -- forma exacta diferida)
+    |              +-- review_required / review_status / review_note / reviewed_by? / reviewed_at?
+    |
+    +-- relationships: [ Relationship, ... ]   (identidad LOCAL -- relationship_id)
+    |
+    +-- issues: consultables por record_id     (Issue -- issue_id global, coleccion propia)
+
+  Relationship (relationship_id, relationship_type, source_record, target_record?,
+                target_reference?, direction, required, resolution_status)
+
+  Issue (issue_id, execution_id, stage, severity, code, message,
+         record_id, field_name?, relationship_id?, rule_reference?, status,
+         resolution?, source_value?, transformed_value?, blocks_export)
+
+
+================================================================
+6. CAMBIOS EN ADR-014
+================================================================
+
+- Status: "Approved Design" -> PROPOSED.
+- Nueva subseccion de Context: "Revision del 2026-07-27", listando los
+  10 problemas encontrados.
+- Decision reescrita completa: taxonomia de identidad de 3 niveles,
+  identidad en 4 conceptos con invariante de no colision, Provenance sin
+  duplicar valor + evidence_excerpt, processing_stage/disposition
+  separados, Execution sin object_type unico, revision humana con
+  reviewed_by/reviewed_at, forma de TransformationTrace diferida.
+- Consequences: añadido el orden aprobado de proximos pasos (6 puntos,
+  corrige la recomendacion anterior).
+- Alternatives Rejected: se añaden explicitamente las decisiones de la v1
+  de esta misma ADR que la revision obligo a descartar (record_id por
+  source_record_id solo, duplicacion de original_value, status unico) --
+  para dejar trazabilidad de que esta ADR se corrigio a si misma.
+
+Indice (docs/02-adr/README.md): estado de ADR-014 actualizado a
+"Proposed (en revision arquitectonica)".
+
+
+================================================================
+7. RIESGOS PENDIENTES
+================================================================
+
+Todos documentados en §26 del documento de arquitectura (extendida con
+uno nuevo):
+
+  - Diseño no validado empiricamente todavia (sin segundo Connector real).
+  - Las fusiones de entidad podrian resultar insuficientes en la Fase P6
+    documental.
+  - Identidad basada en locator para fuentes sin clave estable sigue
+    siendo fragil ante re-paginacion (no resuelto, es un limite del
+    propio problema).
+  - NUEVO: identity_basis: source_key_with_ordinal depende de que la
+    fuente ofrezca un orden de lectura estable entre ejecuciones -- sin
+    ORDER BY determinista, el record_id de un duplicado podria no ser
+    reproducible entre ejecuciones distintas (aunque si cumple el
+    invariante de no colision dentro de una misma ejecucion).
+  - Provenance embebido por campo incrementa el tamaño de cada registro
+    serializado.
+  - Riesgo de confusion entre este CDM y src/knowledge_base/model.py por
+    vocabulario similar.
+
+Cuestion que la revision deja explicitamente para mas adelante: el
+algoritmo exacto del ordinal de extraccion y la longitud/funcion de
+short_hash son decisiones de implementacion, no de esta ADR (§25 del
+documento).
+
+
+================================================================
+8. ARCHIVOS CREADOS Y MODIFICADOS
+================================================================
+
+MODIFICADOS (ya existian de la tarea anterior, corregidos en esta revision):
+  - docs/01-architecture/canonical-data-model.md
+  - docs/02-adr/ADR-014-canonical-data-model.md
+  - docs/02-adr/README.md (estado de ADR-014 actualizado)
+
+CREADOS (esta revision):
+  - reports/executions/2026-07-27/Informe-Revision-Canonical-Data-Model-EMF.md  (este informe)
+  - reports/executions/2026-07-27/Informe-Revision-Canonical-Data-Model-EMF.txt (mismo informe, texto plano)
+
+Ningun archivo de src/, tests/, config/, sql/, main.py, requirements.txt,
+CLAUDE.md ni documentacion legada fue tocado.
+
+
+================================================================
+9. RUTAS DE LOS INFORMES
+================================================================
+
+  MD:  reports/executions/2026-07-27/Informe-Revision-Canonical-Data-Model-EMF.md
+  TXT: reports/executions/2026-07-27/Informe-Revision-Canonical-Data-Model-EMF.txt
+
+Contenido identico entre ambos -- la unica diferencia es de formato (el
+.md usa tablas y encabezados Markdown; el .txt usa el mismo contenido con
+separadores ASCII en texto plano).
+
+
+================================================================
+10. RESULTADO DE VALIDACIONES
+================================================================
+
+  [OK] Ausencia de colisiones conceptuales de record_id: verificado -- el
+       invariante ("nunca compartido entre ocurrencias fisicas distintas")
+       esta explicito en §9 y demostrado en el ejemplo §20.2.
+  [OK] Ausencia de original_value duplicado: verificado -- eliminado de
+       Provenance, confirmado en §12 y en el ejemplo §22.
+  [OK] Coherencia entre entidades con identidad y entidades embebidas:
+       verificado -- taxonomia de 3 niveles aplicada de forma consistente
+       en §6, §7 y §9.
+  [OK] Separacion entre processing_stage y disposition: verificada en
+       §17, sin maquina de estados formal.
+  [OK] Execution compatible con varios object_type: verificado en §9.1,
+       con precedente real citado (MigrationObject.processing_scope
+       cross_module).
+  [OK] source_type extensible e incluyendo api: verificado en §12.
+  [OK] Revision humana trazable: reviewed_by/reviewed_at añadidos en §14.
+  [OK] ADR-014 en estado Proposed: verificado en el encabezado de la ADR
+       y en el indice.
+  [OK] Enlaces relativos: revisados uno a uno, todos resuelven a ficheros
+       existentes.
+  [OK] git diff --check: sin errores de formato (solo aviso de
+       normalizacion de fin de linea LF->CRLF, no de contenido).
+  [OK] git status --short: solo los archivos declarados en la seccion 8
+       corresponden a esta revision.
+  [OK] git diff --stat: no aplica de forma util (ficheros no trackeados
+       en git -- ver seccion 12).
+
+
+================================================================
+11. git status --short
+================================================================
+
+  ?? docs/01-architecture/canonical-data-model.md   (modificado en esta revision)
+  ?? docs/02-adr/ADR-014-canonical-data-model.md      (modificado en esta revision)
+  ?? docs/02-adr/README.md                             (modificado en esta revision)
+  ?? reports/executions/2026-07-27/                    (informes de esta y la tarea anterior)
+
+(el resto de docs/00-blueprint, 01-architecture, 02-adr,
+03-engineering-standards, 04-roadmap, 05-sprint-reviews, 06-releases,
+07-developer-guide, 08-user-guide ya figuraban sin trackear antes de esta
+tarea -- no fueron creados ni modificados por ella)
+
+
+================================================================
+12. git diff --stat
+================================================================
+
+No aplica de forma util: ninguno de los ficheros de este repositorio esta
+trackeado todavia en git (no ha habido ningun commit sobre docs/), por lo
+que "git diff" no tiene una version previa contra la que comparar.
+Verificado en su lugar con "git diff --no-index --check" contra cada
+fichero modificado: sin errores de espacio en blanco (unico aviso:
+normalizacion de fin de linea LF->CRLF, propia de la configuracion de git
+en este entorno, no un problema de contenido).
+
+
+================================================================
+RECOMENDACION DEL SIGUIENTE PASO (CORREGIDA)
+================================================================
+
+Orden aprobado por esta revision, registrado en ADR-014 §Consequences:
+
+  1. Aprobar este Canonical Data Model (cerrar la revision actual).
+  2. Diseñar la Mapping Specification (resuelve, entre otras cosas, la
+     forma exacta de TransformationTrace).
+  3. Diseñar el Enablon Template Contract (Enablon Template Registry).
+  4. Implementar el Framework Core (Sprint 4.1).
+  5. Validar con consumidores reales.
+  6. Incorporar un segundo Connector cuando corresponda.
+
+No se realizo commit de ningun cambio.

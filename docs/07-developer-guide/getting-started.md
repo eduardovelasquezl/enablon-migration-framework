@@ -29,6 +29,14 @@ Ver [`README.md`](../../README.md) § 3 para requisitos e instalación
 (Python, `.venv`, `requirements.txt`, `.env`). No se repite aquí para no
 duplicar y arriesgar que ambos documentos diverjan.
 
+Si tu componente necesita datos reales de migración (ETL, CSV de Enablon,
+mappings, catálogos), esos datos **nunca viven dentro del repositorio** —
+ver
+[`external-data-workspace.md`](../01-architecture/external-data-workspace.md)
+para el workspace externo (`EMF_DATA_ROOT`) y
+[`local-data-recovery-checklist.md`](local-data-recovery-checklist.md)
+para el procedimiento de recuperación tras el incidente de Sprint 6.
+
 ## 3. Antes de escribir un componente nuevo, responde
 
 - **¿En qué capa vive?** (Core / Engine / Connector / Plugin / Project

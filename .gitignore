@@ -36,6 +36,21 @@ logs/*
 sql/generated/*
 !sql/generated/.gitkeep
 
+# Sprint 7 -- Workspace Separation (ver
+# docs/01-architecture/external-data-workspace.md). El workspace externo
+# de datos vive FUERA del repositorio (EMF_DATA_ROOT) -- estas reglas son
+# una salvaguarda adicional por si, por error, alguien copia datos reales
+# o crea el workspace dentro del árbol del repo. No se ignoran todos los
+# .csv/.xlsx de forma indiscriminada (existen fixtures pequeños y
+# plantillas versionables) -- reglas específicas por extensión de riesgo
+# alto y por nombre de carpeta.
+*.bak
+*.BAK
+*.zip
+*.ZIP
+Migracion_Enablon_Data/
+migracion_enablon_data/
+
 # OS / editor
 .DS_Store
 .vscode/

@@ -47,6 +47,13 @@ ejecución — ningún incremento de este repositorio lo cambia por sí solo.
   ni necesita valores reales.
 - Acceso de red de solo lectura a la base de datos `Prevencion` (conexión
   lógica `prevencion` en `config/databases.yaml`) para el objeto Drills.
+- **Opcional**: `EMF_DATA_ROOT` en `.env`, apuntando a tu workspace externo
+  de datos de migración (ETL, CSV reales de Enablon, mappings, catálogos —
+  ver
+  [`docs/01-architecture/external-data-workspace.md`](docs/01-architecture/external-data-workspace.md)).
+  Sin esta variable, el Framework funciona igual — solo se omite la
+  comparación opcional contra el CSV histórico de Drills. Esta ruta es
+  local de cada equipo, nunca se sube al repositorio.
 
 ```bash
 python -m venv .venv

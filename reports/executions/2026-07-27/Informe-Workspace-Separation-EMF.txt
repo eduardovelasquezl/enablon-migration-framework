@@ -1,0 +1,476 @@
+INFORME — SPRINT 7: WORKSPACE SEPARATION (CODIGO <-> DATOS)
+Proyecto: Enablon Migration Framework (EMF)
+Fecha: 2026-07-27
+Tarea: Separacion permanente entre codigo (Git) y datos de migracion
+(workspace externo), tras el incidente de perdida de datos de Sprint 6.
+
+
+================================================================
+1. RESUMEN EJECUTIVO
+================================================================
+
+Se versiono y amplio el checklist de recuperacion de datos (commit y
+push ya realizados, autorizados explicitamente). Se diseño formalmente
+la separacion Codigo<->Datos (external-data-workspace.md), se
+inventariaron todas las rutas de datos del repositorio, y se implemento
+un componente minimo (DataWorkspace, en src/core/) que resuelve rutas
+contra un workspace externo configurable por variable de entorno
+(EMF_DATA_ROOT), sin logica de Drills dentro del Core. Drills se adapto
+minimamente: solo la ruta del CSV historico de comparacion (la que causo
+el incidente) pasa a resolverse contra el workspace externo, con
+compatibilidad total cuando no esta configurado. 23 tests nuevos, todos
+en verde; la suite completa pasa de 451 a 474 PASSED, 7 SKIPPED (mismos
+skips de siempre). No se creo el workspace real, no se movieron ni
+recuperaron datos, no se ejecuto SQL Server. SOLO SE HIZO EL COMMIT
+AUTORIZADO DEL CHECKLIST -- el resto de esta implementacion queda
+preparada, probada y documentada, pendiente de tu aprobacion para
+commitear (ver §20-diferido y la propuesta de commits al final).
+
+
+================================================================
+2. CONTEXTO DEL INCIDENTE
+================================================================
+
+Ver docs/07-developer-guide/local-data-recovery-checklist.md §0: el
+26-27/07/2026, una operacion de limpieza de historial (git filter-repo)
+necesaria para publicar el repositorio elimino, tanto del historial como
+del disco local, el contenido de inputs/_incoming_claude_web/ -- ETL,
+CSV reales de Enablon, mappings y errores que el usuario habia
+incorporado manualmente tras el traslado del proyecto desde Claude Web a
+Claude Code. La causa raiz: nunca debio haber datos reales de cliente
+dentro del arbol de un repositorio Git. Este sprint resuelve esa causa
+raiz de forma permanente.
+
+
+================================================================
+3. OBJETIVOS
+================================================================
+
+  1. Finalizar y versionar el checklist de recuperacion -- OK hecho y
+     publicado (commit f0a4038).
+  2. Diseñar formalmente la separacion codigo/datos -- OK
+     external-data-workspace.md.
+  3. Preparar el Framework para una raiz de datos externa -- OK
+     DataWorkspace + config/data_workspace.yaml.
+  4. No depender de rutas absolutas especificas del equipo -- OK
+     verificado por inspeccion, ninguna ruta de este equipo en
+     src/core/.
+  5. Mantener compatibilidad de Drills -- OK verificado por suite
+     completa en verde.
+  6. No ejecutar SQL Server ni exportaciones reales -- OK cumplido.
+  7. No recuperar ni generar archivos reales automaticamente -- OK
+     cumplido, ningun archivo de datos fue movido, copiado ni
+     descargado.
+
+
+================================================================
+4. ESTADO INICIAL
+================================================================
+
+  rama:      feature/drills-filtered-exports
+  remoto:    https://github.com/eduardovelasquezl/enablon-migration-framework.git
+  tag:       framework-core-v1 (existente, apunta a d55f4c2)
+  tests:     451 passed, 7 skipped
+  pendiente: docs/07-developer-guide/local-data-recovery-checklist.md
+             (unico fichero sin trackear)
+
+Todo confirmado exactamente como se esperaba antes de modificar nada.
+
+
+================================================================
+5. CHECKLIST VERSIONADO
+================================================================
+
+docs/07-developer-guide/local-data-recovery-checklist.md ampliado con:
+ruta recomendada actualizada
+(C:\Users\EduardoVelasquez\Desktop\Migracion_Enablon_Data\, marcada
+explicitamente como ejemplo configurable, no fija); estructura por
+finalidad (ETL/CSV_Enablon/Mappings/Catalogs/Errors/Evidence/SQL/
+Outputs/Archive, los Bloque1..7 quedan solo como referencia historica en
+el inventario); nueva seccion "Datos versionables y no versionables";
+nueva seccion "Arquitectura Codigo<->Datos"; nota sobre campos CS_;
+Status: Implemented. COMMIT f0a4038, YA PUBLICADO (git push origin
+feature/drills-filtered-exports exitoso, hash remoto verificado
+identico al local).
+
+
+================================================================
+6. ARQUITECTURA CODIGO <-> DATOS
+================================================================
+
+  Repositorio Git (versionado)          Workspace externo (NO versionado)
+  enablon-migration-framework/          Migracion_Enablon_Data/
+    src/, tests/, config/, docs/          projects/moeve/
+                                             ETL/ CSV_Enablon/ Mappings/
+                                             Catalogs/ Errors/ Evidence/
+                                             SQL/ Outputs/ Archive/
+
+Estructura POR PROYECTO recomendada explicitamente (frente a la
+alternativa plana) por escalabilidad hacia un segundo cliente futuro --
+justificacion completa en external-data-workspace.md §5.1. Detalle
+completo del diseño en ese mismo documento (20 secciones).
+
+
+================================================================
+7. INVENTARIO DE RUTAS ACTUALES
+================================================================
+
+  Archivo/Ubicacion              | Ruta actual           | Riesgo | Cambio
+  --------------------------------|------------------------|--------|-------
+  pipeline.py:68-69 (antes)       | inputs/_incoming_      | ALTO   | SI
+                                   | claude_web/Bloque4.../ |        |
+  drills.yaml:72                   | inputs/entity_catalog/ | Medio  | No
+  settings.yaml -> folders.*        | inputs/etl, csv_       | Bajo   | No
+                                     | enablon, mappings...  |        |
+  settings.yaml -> folders.outputs   | outputs                | Bajo   | No
+  core_adapters.py / pipeline.py      | outputs/prototype/    | Bajo   | No
+                                        | drills                |        |
+  validation_rules.yaml:92              | (comentario textual)  | Nulo   | No
+  volumetry.py/mapping_coverage.py/      | (comentarios textuales)| Nulo | No
+  mappings.py (docstrings)                |                       |      |
+  drills-operational-mvp.md                | (mencion Sprint 5,   | Bajo | No
+                                             | desactualizada)      |      |
+  test_evidence_engine.py:138               | (fixture ilustrativa) | Nulo | No
+  .gitignore                                 | reglas por carpeta    | Gestionado, | SI
+                                               | inputs/*              | reforzado   |
+
+Ninguna ruta absoluta de un equipo concreto (C:\Users\...) se encontro
+en src/ ni config/ -- confirmado por busqueda (solo aparecen en
+binarios .pyc, irrelevantes).
+
+
+================================================================
+8. CONFIGURACION PROPUESTA
+================================================================
+
+config/data_workspace.yaml (nuevo, sin ninguna ruta real):
+
+  root_env: EMF_DATA_ROOT
+
+  projects:
+    moeve:
+      base: projects/moeve
+      categories:
+        etl: ETL
+        csv_enablon: CSV_Enablon
+        mappings: Mappings
+        catalogs: Catalogs
+        errors: Errors
+        evidence: Evidence
+        sql: SQL
+        outputs: Outputs
+        archive: Archive
+
+Decision: YAML minimo dedicado (no una seccion mas dentro de
+config/settings.yaml, que es semanticamente para rutas internas del
+repo) -- justificado en external-data-workspace.md §11.
+
+
+================================================================
+9. COMPONENTE DE RESOLUCION
+================================================================
+
+src/core/data_workspace.py::DataWorkspace -- vive en src/core/ (no
+conoce Drills, verificado por inspeccion de imports). API:
+
+  resolver = DataWorkspace()  # o get_default_data_workspace()
+  resolver.resolve(project="moeve", category="csv_enablon",
+                    relative_path="Drills.csv", required=True)
+
+Garantias implementadas y probadas: raiz via EMF_DATA_ROOT (o
+root_override para tests); nunca abre/lee archivos; nunca crea
+directorios; rechaza rutas que escapan de la categoria via ".." o rutas
+absolutas (PathEscapesWorkspaceError); distingue required=True/False;
+mensajes de error claros, sin datos sensibles; soporta rutas con
+espacios y Unicode (via pathlib.Path). Excepciones:
+DataRootNotConfiguredError, UnknownProjectError, UnknownCategoryError,
+PathEscapesWorkspaceError, RequiredPathNotFoundError, todas bajo
+DataWorkspaceError.
+
+
+================================================================
+10. INTEGRACION MINIMA CON DRILLS
+================================================================
+
+Unico cambio: HISTORICAL_CSV_PATH (constante apuntando dentro del repo,
+causa directa del riesgo) se sustituye por
+_resolve_historical_csv_path(), que usa DataWorkspace con
+required=False. Estrategia transitoria implementada exactamente como
+pedia el encargo:
+
+  1. Si EMF_DATA_ROOT esta declarado y el fichero existe en el
+     workspace -> se usa para comparison_report.yaml.
+  2. Si no esta declarado, o el fichero no esta -> comparison_report.yaml
+     no se genera (identico al comportamiento anterior al incidente).
+  3. NUNCA CAE DE VUELTA a leer un dato real dentro de inputs/ --
+     verificado por test (test_nunca_cae_a_inputs_incoming_claude_web,
+     inspecciona el codigo fuente de la funcion).
+
+entity_catalog_csv de Drills NO SE TOCO en esta fase (§7, documentado
+como deuda tecnica, no urgente).
+
+
+================================================================
+11. PROTECCION GIT
+================================================================
+
+.gitignore ampliado: *.bak/*.BAK, *.zip/*.ZIP,
+Migracion_Enablon_Data//migracion_enablon_data/ (por si se crea
+accidentalmente dentro del repo). NO se añadio una regla generica para
+todos los .csv/.xlsx -- se preservan fixtures y plantillas versionables,
+tal como exigia el encargo. No se creo data-safety-rules.md: su
+contenido habria duplicado integramente local-data-recovery-checklist.md
+§1-2 y external-data-workspace.md §7-9 -- decision justificada
+explicitamente (documentation-standards.md §8, "un documento, una
+responsabilidad").
+
+
+================================================================
+12. CAMPOS ESTANDAR Y CAMPOS CS_
+================================================================
+
+Documentado en local-data-recovery-checklist.md §6 y
+external-data-workspace.md §15 (no duplicado dos veces con el mismo
+detalle): los campos CS_* son personalizados de cliente, deben
+declararse expresamente en plantillas/mappings/validaciones (ya asi en
+config/exports/drills.yaml), nunca aceptarse por prefijo sin contrato;
+los CSV reales que los contienen viven siempre en el workspace externo.
+
+
+================================================================
+13. TESTS
+================================================================
+
+23 tests nuevos:
+
+  - tests/test_data_workspace.py -- 17 tests: data root definido/
+    ausente/override, ruta relativa valida, ruta con espacios, ruta con
+    Unicode, ruta requerida existente/inexistente, ruta opcional
+    inexistente, escape con "..", ruta absoluta rechazada, no crea
+    directorios, proyecto desconocido, categoria desconocida, root_env
+    configurable/por defecto.
+  - tests/test_drills_data_workspace_integration.py -- 6 tests: sin
+    EMF_DATA_ROOT no falla; con EMF_DATA_ROOT pero sin fichero no falla;
+    con fichero presente se resuelve; nunca referencia la ruta legada
+    (inspeccion de codigo fuente); pipeline completo sin workspace (sin
+    comparison_report.yaml); pipeline completo con workspace fake (con
+    comparison_report.yaml).
+
+Ninguna dependencia de C:\Users\EduardoVelasquez, de SQL Server, ni
+escritura fuera de tmp_path.
+
+
+================================================================
+14. RESULTADOS
+================================================================
+
+  .venv/Scripts/python.exe -m pytest -q
+  474 passed, 7 skipped in 9.55s
+
+451 (previos) + 23 (nuevos) = 474. Los 7 skipped son los mismos de
+siempre (integracion opt-in contra SQL real). Sin fallos.
+
+
+================================================================
+15. COMPATIBILIDAD
+================================================================
+
+  - python main.py export drills ... funciona exactamente igual --
+    verificado por la suite completa.
+  - Sin EMF_DATA_ROOT declarado, el comportamiento es identico al de
+    antes de este sprint (comparacion opcional omitida).
+  - Ninguna firma publica existente cambio -- pipeline.run() no gano
+    parametros nuevos en esta fase; el unico cambio es interno a la
+    funcion.
+
+
+================================================================
+16. ARCHIVOS CREADOS
+================================================================
+
+  - docs/01-architecture/external-data-workspace.md
+  - config/data_workspace.yaml
+  - src/core/data_workspace.py
+  - tests/test_data_workspace.py
+  - tests/test_drills_data_workspace_integration.py
+  - reports/executions/2026-07-27/Informe-Workspace-Separation-EMF.md
+    (este informe) y .txt
+
+(docs/07-developer-guide/local-data-recovery-checklist.md ya se creo y
+COMMITEO en la Fase 2, no se repite aqui como "nuevo" de esta lista.)
+
+
+================================================================
+17. ARCHIVOS MODIFICADOS
+================================================================
+
+  - docs/07-developer-guide/local-data-recovery-checklist.md (Fase 1, ya
+    commiteado y publicado)
+  - .gitignore (reglas BAK/ZIP/workspace accidental)
+  - .env.example (EMF_DATA_ROOT de ejemplo, sin valor real)
+  - README.md (nota opcional sobre EMF_DATA_ROOT en §3)
+  - docs/07-developer-guide/getting-started.md (enlace a los dos
+    documentos nuevos)
+  - src/core/__init__.py (exporta los simbolos de data_workspace.py)
+  - src/export/prototype/drills/pipeline.py (adaptacion de
+    HISTORICAL_CSV_PATH, §10)
+
+TODOS LOS DE ESTA LISTA (salvo el checklist, ya commiteado) SIGUEN SIN
+COMMITEAR -- preparados, probados y documentados, a la espera de tu
+aprobacion (§20).
+
+
+================================================================
+18. DEUDA TECNICA
+================================================================
+
+  1. entity_catalog_csv de Drills no se migro al workspace externo (bajo
+     riesgo, nunca estuvo en el historial de Git) -- candidato futuro.
+  2. Relacion entre outputs/ local (por ejecucion) y la categoria
+     outputs/archive del workspace externo no esta automatizada --
+     decision de implementacion futura.
+  3. config/data_workspace.yaml con categorias fijas por proyecto -- si
+     un proyecto futuro necesita una categoria nueva, hoy exige editar
+     el YAML a mano; aceptado con un unico proyecto real (principio 8).
+  4. Sin aviso proactivo al arrancar la CLI si EMF_DATA_ROOT no esta
+     declarado -- comportamiento perezoso deliberado.
+  5. docs/01-architecture/drills-operational-mvp.md (Sprint 5) sigue
+     mencionando la ruta legada inputs/_incoming_claude_web/ como parte
+     de un hallazgo historico -- desactualizado tras el incidente, no
+     actualizado en esta fase (fuera del alcance estricto del encargo).
+
+
+================================================================
+19. RIESGOS
+================================================================
+
+  - El diseño del workspace externo no se ha probado todavia con un
+    workspace real (nunca creado, por instruccion explicita) --
+    validado solo con tmp_path fake en tests.
+  - Si en el futuro se declara EMF_DATA_ROOT apuntando por error dentro
+    del propio repositorio, DataWorkspace no lo detecta ni lo impide --
+    la proteccion real es la regla de .gitignore (§11) y la disciplina
+    documentada en el checklist.
+  - La estructura projects/<project>/ asume, sin haberlo verificado
+    todavia con un segundo proyecto real, que el esquema de categorias
+    generaliza bien -- riesgo aceptado deliberadamente (principio 8).
+
+
+================================================================
+20. ACCIONES MANUALES PENDIENTES
+================================================================
+
+  - El usuario recuperara manualmente los ETL, CSV de Enablon, mappings,
+    errores y documentacion desde sus fuentes originales (Descargas,
+    Teams, SharePoint, OneDrive, correo, carpetas del cliente, sesion
+    original de Claude Web) -- no se ha intentado ni simulado ninguna
+    recuperacion automatica.
+  - Cuando se recuperen archivos, se registran en la tabla de
+    local-data-recovery-checklist.md §5.
+  - El workspace real
+    (C:\Users\EduardoVelasquez\Desktop\Migracion_Enablon_Data\ o la ruta
+    que el usuario prefiera) no se ha creado -- queda pendiente de
+    creacion manual antes de que EMF_DATA_ROOT tenga algun efecto real.
+  - REVISAR Y APROBAR LOS COMMITS PROPUESTOS (§21) antes de que se
+    ejecuten -- ninguno de los cambios de esta fase (salvo el checklist)
+    se ha commiteado todavia.
+
+
+================================================================
+21. PROPUESTA DE COMMITS (no ejecutados, a la espera de tu aprobacion)
+================================================================
+
+Dado que los cambios de esta fase tocan capas distintas (Core, Drills,
+documentacion, proteccion Git), se proponen TRES COMMITS SEPARADOS, en
+este orden:
+
+COMMIT A -- Core: workspace externo de datos
+  feat(core): add external data workspace resolver
+
+  - add DataWorkspace component (src/core/data_workspace.py)
+  - add config/data_workspace.yaml (category declarations, no real paths)
+  - resolve paths via EMF_DATA_ROOT, never hardcoded in the Core
+  - prevent path escape via '..' or absolute relative_path
+  - add unit tests (17 new)
+
+  Archivos: src/core/data_workspace.py, src/core/__init__.py,
+  config/data_workspace.yaml, tests/test_data_workspace.py.
+
+COMMIT B -- Drills: adaptacion al workspace externo
+  fix(drills): resolve historical CSV from external workspace, not repo
+
+  - replace hardcoded HISTORICAL_CSV_PATH with DataWorkspace resolution
+  - comparison remains optional; no silent fallback to repo-local data
+  - add integration tests (6 new)
+
+  Archivos: src/export/prototype/drills/pipeline.py,
+  tests/test_drills_data_workspace_integration.py.
+
+COMMIT C -- Documentacion y proteccion del repositorio
+  docs(data): document workspace architecture and harden .gitignore
+
+  - add external-data-workspace.md (full design)
+  - update .gitignore (BAK/ZIP/accidental workspace folder)
+  - update .env.example with EMF_DATA_ROOT example
+  - add minimal notes in README.md and getting-started.md
+
+  Archivos: docs/01-architecture/external-data-workspace.md,
+  .gitignore, .env.example, README.md,
+  docs/07-developer-guide/getting-started.md.
+
+Ningun commit incluye push automatico -- a la espera de tu aprobacion
+explicita, tanto de los commits como del push.
+
+
+================================================================
+22. git diff --check
+================================================================
+
+  exit=0 (solo avisos de normalizacion LF->CRLF, sin errores)
+
+
+================================================================
+23. git status --short
+================================================================
+
+   M .claude/settings.local.json   (auto-gestionado por Claude Code, no se toca)
+   M .env.example
+   M .gitignore
+   M README.md
+   M docs/07-developer-guide/getting-started.md
+   M src/core/__init__.py
+   M src/export/prototype/drills/pipeline.py
+  ?? config/data_workspace.yaml
+  ?? docs/01-architecture/external-data-workspace.md
+  ?? src/core/data_workspace.py
+  ?? tests/test_data_workspace.py
+  ?? tests/test_drills_data_workspace_integration.py
+
+
+================================================================
+24. git diff --stat
+================================================================
+
+   .claude/settings.local.json                |  5 +++-
+   .env.example                               |  9 +++++++
+   .gitignore                                 | 15 +++++++++++
+   README.md                                  |  7 +++++
+   docs/07-developer-guide/getting-started.md |  8 ++++++
+   src/core/__init__.py                       | 18 +++++++++++++
+   src/export/prototype/drills/pipeline.py    | 43 ++++++++++++++++++++++++++----
+   7 files changed, 99 insertions(+), 6 deletions(-)
+
+
+================================================================
+RECOMENDACION DEL SIGUIENTE PASO
+================================================================
+
+Revisar y aprobar (o pedir cambios sobre) la propuesta de tres commits
+de §21. Tras la aprobacion: commitear en ese orden, ejecutar la suite
+completa una vez mas, y hacer push normal (sin force) de
+feature/drills-filtered-exports -- sin crear ni mover el tag
+framework-core-v1 (sigue apuntando correctamente a d55f4c2, sin relacion
+con este sprint). Despues de eso, la siguiente prioridad real del
+proyecto sigue siendo la recuperacion manual de los datos originales
+(§20), no mas trabajo de arquitectura -- el Framework ya esta preparado
+para recibirlos.

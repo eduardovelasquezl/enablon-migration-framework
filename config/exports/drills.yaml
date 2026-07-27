@@ -19,6 +19,19 @@ module: simulacros
 migration_object: Drills
 prototype_status: review_only
 
+# Secuencia de etapas del Framework Core v1 (docs/01-architecture/framework-core-v1.md)
+# para este objeto -- nombres lógicos resueltos contra el StageRegistry en
+# tiempo de ejecución (src/core/registry.py), nunca una lista de clases.
+# Sección NUEVA, puramente aditiva: opcional para cualquier código que siga
+# usando src.export.prototype.drills.pipeline.run() directamente (que no la
+# lee) -- solo la consume el wiring del Core
+# (src/export/prototype/drills/core_adapters.py). No existe todavía una
+# etapa 'report' separada de 'evidence' (ver drills-operational-mvp.md § 9:
+# no hay un artefacto de "reporte" distinto del Excel de evidencia), así
+# que no se declara aquí -- añadirla cuando exista un consumidor real.
+pipeline:
+  stages: [query, canonicalize, transform_and_export, evidence]
+
 source:
   connection: prevencion
   sql_file: "sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql"

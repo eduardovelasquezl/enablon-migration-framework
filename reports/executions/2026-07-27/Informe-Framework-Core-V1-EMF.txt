@@ -1,0 +1,387 @@
+INFORME — FRAMEWORK CORE V1 / EXECUTION PIPELINE (FASE 6 EMF)
+Proyecto: Enablon Migration Framework (EMF)
+Fecha: 2026-07-27
+Tarea: Implementar el primer Execution Pipeline generico del EMF, con
+Drills como primer consumidor real, sin reconstruir el prototipo existente.
+
+
+================================================================
+1. RESUMEN EJECUTIVO
+================================================================
+
+Se implemento src/core/ -- un Execution Pipeline generico (contratos +
+StageRegistry + PipelineOrchestrator) -- y se conecto Drills a el
+mediante cuatro adaptadores de etapa (query, canonicalize,
+transform_and_export, evidence) que ENVUELVEN, SIN REESCRIBIR, el
+prototipo ya existente y verificado. El Core no contiene ninguna linea de
+logica especifica de Drills; toda esa conexion vive en
+src/export/prototype/drills/core_adapters.py. Se añadio un comando CLI
+nuevo (python main.py run ...) sin tocar el comando existente
+(export drills). 47 tests nuevos, todos en verde; los 451 tests ya
+existentes en el repositorio siguen pasando sin cambios (7 skipped,
+mismos de siempre -- integracion opt-in contra SQL real). Un test de
+regresion compara, byte a byte, el CSV producido por el Core contra el
+producido por el codigo legado con los mismos datos de entrada. No se
+accedio a SQL Server real, no se ejecuto modo full, no se hizo commit.
+
+
+================================================================
+2. ESTADO PREVIO
+================================================================
+
+  - Prototipo de Drills funcional (src/export/prototype/drills/), con una
+    ejecucion real y exitosa ya registrada:
+    outputs/prototype/drills/20260723T195418Z/ (status: SUCCESS, 0
+    errores, drills.csv + manifiesto + validation report + comparison
+    report + ambos Excel de evidencia).
+  - src/core/ no existia (architecture-overview.md lo describia como
+    "Approved Design, no implementado todavia").
+  - docs/01-architecture/canonical-data-model.md y ADR-014 en estado
+    Proposed; docs/01-architecture/mapping-specification.md y ADR-015 en
+    estado Proposed. Ninguno de los dos implementado en codigo.
+
+
+================================================================
+3. FLUJO ACTUAL DE DRILLS (FASE 0 -- ANALISIS PREVIO, SIN MODIFICAR NADA)
+================================================================
+
+  CLI (src/cli.py::export_drills)
+    -> compile_filter_tokens() (Query Engine v0.1, si hay --filter)
+    -> pipeline.run() (src/export/prototype/drills/pipeline.py)
+         -> load_drills_config()               (config.py)
+         -> extract_drills()                   (extractor.py, ya separado)
+         -> validate_pre_write()                (validator.py)
+         -> _transform_rows()                    (privada -- Mapping+reglas+issues, FUSIONADA)
+         -> write_csv()                           (exporter.py)
+         -> validate_output_csv()                  (validator.py)
+         -> write_validation_report()               (manifest.py)
+         -> build_export_manifest()/write_export_manifest() (manifest.py)
+         -> build_comparison_report()                 (comparison.py, opcional)
+         -> _write_issues_jsonl()                      (privada)
+    -> [opcional] _generate_evidence() -> evidence.collector.load_run()
+                                         -> evidence.workbook.build_workbook()/save_workbook()
+
+YA GENERICOS HOY: extractor.py (extraccion), evidence/collector.py+
+workbook.py (ya se invocan aparte de la exportacion). ADAPTABLES SIN
+RIESGO: los dos anteriores. ESPECIFICOS DE DRILLS: config.py (FieldSpec
+de 8 columnas concretas), transformations.py/mappings.py (reglas de
+negocio de Simulacros), OUTPUT_COLUMNS/HISTORICAL_CSV_PATH (constantes
+del objeto). MEZCLAN ORQUESTACION CON REGLAS FUNCIONALES: pipeline.py::
+run() y su funcion privada _transform_rows() -- Mapping, Validation,
+Export, Manifest, Comparison e Issues estan entrelazados en una sola
+funcion, compartiendo el mismo objeto RunStats mutable. NO DEBIA MOVERSE
+TODAVIA: ninguna de las funciones privadas (_transform_rows,
+_write_issues_jsonl) -- separarlas exige reescribir pipeline.py, fuera de
+alcance de esta fase.
+
+
+================================================================
+4. PLAN EJECUTADO (registrado antes de modificar, Fase 0)
+================================================================
+
+  1. Contratos minimos del Core (src/core/contracts.py), sin ningun
+     import de Drills.
+  2. StageRegistry explicito (src/core/registry.py) -- sin descubrimiento
+     dinamico.
+  3. PipelineOrchestrator generico (src/core/orchestrator.py) -- resuelve
+     etapas, propaga excepciones tecnicas, detiene ante FAILURE.
+  4. Seccion pipeline: nueva y opcional en config/exports/drills.yaml.
+  5. Cuatro adaptadores de etapa en
+     src/export/prototype/drills/core_adapters.py, reutilizando el
+     codigo existente sin reescribirlo.
+  6. Modificacion aditiva de pipeline.run() (tres parametros opcionales
+     nuevos, default None, comportamiento identico si se omiten).
+  7. CanonicalBatch (seam minimo hacia el CDM, Opcion C de la Fase 6).
+  8. Comando CLI nuevo run, aditivo, en src/cli.py.
+  9. 47 tests nuevos (unitarios de Core + integracion local + regresion).
+  10. Ejecucion de la suite completa (451+47 tests) y git diff --check.
+  11. Documentacion (framework-core-v1.md) y ADR-016.
+  12. Este informe.
+
+RIESGOS IDENTIFICADOS DE ANTEMANO (y como se mitigaron): reescribir
+pipeline.py podia romper el comportamiento ya verificado -> se opto por
+envolverlo como adaptador temporal en vez de descomponerlo. Duplicar la
+consulta SQL entre las etapas query y transform_and_export -> se resolvio
+con el parametro aditivo extraction= en pipeline.run(), verificado con un
+test dedicado (test_core_no_ejecuta_la_query_dos_veces).
+
+
+================================================================
+5. ARCHIVOS CREADOS
+================================================================
+
+  - src/core/__init__.py, src/core/contracts.py, src/core/exceptions.py,
+    src/core/registry.py, src/core/orchestrator.py
+  - src/export/prototype/drills/core_adapters.py
+  - tests/test_core_contracts.py, tests/test_core_registry.py,
+    tests/test_core_orchestrator.py, tests/test_drills_core_pipeline.py
+  - docs/01-architecture/framework-core-v1.md
+  - docs/02-adr/ADR-016-framework-core-execution-pipeline.md
+  - reports/executions/2026-07-27/Informe-Framework-Core-V1-EMF.md (este
+    informe) y .txt
+
+
+================================================================
+6. ARCHIVOS MODIFICADOS
+================================================================
+
+  - config/exports/drills.yaml -- añadida seccion pipeline: (13 lineas
+    nuevas, nada eliminado).
+  - src/cli.py -- añadido comando run + imports nuevos (115 lineas
+    nuevas, nada eliminado ni modificado del comando export drills).
+  - src/export/prototype/drills/pipeline.py -- run() gana 3 parametros
+    opcionales con default None (24 lineas netas, comportamiento por
+    defecto sin cambios, verificado por test de regresion).
+  - docs/02-adr/README.md -- fila nueva para ADR-016, numero libre
+    actualizado a ADR-017.
+  - .claude/settings.local.json -- NO editado directamente por mi: es el
+    registro de permisos que el propio Claude Code añade automaticamente
+    al aprobar cada comando Bash ejecutado durante esta tarea. Se
+    documenta por transparencia, no es un cambio de configuracion de
+    proyecto.
+
+Ningun archivo de tests/ existente, ni .env, ni ningun artefacto de
+outputs/ fue modificado.
+
+
+================================================================
+7. CONTRATOS IMPLEMENTADOS
+================================================================
+
+ExecutionRequest, ExecutionContext, PipelineDefinition, PipelineStage
+(Protocol), StageResult, PipelineResult, ArtifactReference, StageMetrics,
+ExecutionStatistics, StageStatus/ExecutionStatus (vocabularios cerrados),
+CanonicalBatch (seam CDM). Ver framework-core-v1.md §5-10 para el detalle
+campo a campo.
+
+
+================================================================
+8. ETAPAS IMPLEMENTADAS
+================================================================
+
+query, canonicalize, transform_and_export (adaptador temporal, fusiona
+Mapping+Validation+Export+Manifest+Comparison+Issues), evidence. No se
+implemento report (no existe artefacto que producir, ver
+drills-operational-mvp.md §9).
+
+
+================================================================
+9. ADAPTADORES CREADOS
+================================================================
+
+DrillsQueryStage, DrillsCanonicalizeStage, DrillsTransformExportStage,
+DrillsEvidenceStage + register_drills_stages() +
+build_drills_pipeline_definition() + build_execution_context(), todos en
+src/export/prototype/drills/core_adapters.py.
+
+
+================================================================
+10. DECISIONES DE COMPATIBILIDAD
+================================================================
+
+  - pipeline.run() gana extraction/run_id/timestamp opcionales (default
+    None) -- cualquier llamador que no los pase (CLI existente, 20 tests
+    previos) se comporta exactamente igual que antes.
+  - El directorio de salida por defecto sigue siendo
+    outputs/prototype/drills/<timestamp> -- sin cambios.
+  - OUTPUT_COLUMNS, formato del CSV, validation_report.yaml,
+    export_manifest.yaml, issues.jsonl -- ningun cambio de forma ni de
+    contenido (verificado por comparacion byte a byte, ver §15).
+  - El comando export drills no se toco.
+
+
+================================================================
+11. GESTION DE ERRORES
+================================================================
+
+Ver framework-core-v1.md §12 para la tabla completa. Resumen: tecnico ->
+excepcion propagada sin capturar; funcional/legado conocido -> capturado
+y traducido a StageResult(FAILURE) (mismas 4 excepciones que ya capturaba
+cli.py); warning/exclusion/no-mapeado -> issues dentro de StageResult,
+igual que en issues.jsonl ya existente; etapa omitida -> SKIPPED, nunca
+oculto. Ningun "except Exception: pass" en el codigo nuevo.
+
+
+================================================================
+12. METRICAS
+================================================================
+
+StageMetrics por etapa (input_record_count, output_record_count,
+excluded_record_count, warning_count, error_count, artifacts_generated,
+tiempos) -- campos no aplicables quedan None, nunca 0 inventado
+(verificado con test dedicado).
+
+
+================================================================
+13. TESTS CREADOS
+================================================================
+
+47 tests nuevos:
+
+  - tests/test_core_contracts.py -- 17 tests (validacion de
+    ExecutionRequest, CanonicalBatch, StageResult, PipelineDefinition,
+    PipelineResult, metricas nulas explicitas).
+  - tests/test_core_registry.py -- 7 tests (registro/resolucion,
+    duplicados, aislamiento entre instancias).
+  - tests/test_core_orchestrator.py -- 14 tests (orden de ejecucion,
+    parada ante fallo, continuacion ante warning/skip, metricas,
+    artefactos, issues, etapa inexistente, excepcion tecnica no
+    interceptada).
+  - tests/test_drills_core_pipeline.py -- 9 tests (pipeline completo sin
+    SQL real, con y sin evidencia, regresion byte a byte contra
+    pipeline.run() directo, no-duplicacion de la consulta SQL,
+    comparacion de solo lectura contra la ejecucion de referencia real,
+    CLI generico via CliRunner).
+
+
+================================================================
+14. TESTS EJECUTADOS
+================================================================
+
+  .venv/Scripts/python.exe -m pytest -q
+  451 passed, 7 skipped in ~14s
+
+Los 7 skipped son los mismos tests de integracion opt-in contra SQL
+Server real que ya existian antes de esta tarea
+(RUN_DRILLS_EXPORT_INTEGRATION_TESTS no esta activado) -- no se ejecuto
+SQL real en ningun momento.
+
+
+================================================================
+15. RESULTADOS
+================================================================
+
+  - Suite completa en verde: 451 passed, 0 failed, 7 skipped (mismos
+    skips que antes de esta tarea).
+  - Regresion byte a byte confirmada: drills.csv producido via Core ==
+    drills.csv producido via pipeline.run() directo, con el mismo
+    DataFrame fake y el mismo run_id/timestamp. validation_report.yaml y
+    export_manifest.yaml (incluidos los hashes) identicos
+    estructuralmente.
+  - Comparacion de solo lectura contra la ejecucion de referencia real
+    (20260723T195418Z): columnas y status.result sin cambios.
+  - git diff --check: limpio.
+
+
+================================================================
+16. DIFERENCIAS RESPECTO AL PROTOTIPO
+================================================================
+
+Ninguna diferencia de comportamiento observable cuando Drills se ejecuta
+por el camino Core. La unica diferencia es de forma, no de contenido: el
+run_id/timestamp de una ejecucion via Core provienen de
+ExecutionContext/ExecutionRequest.execution_id en vez de generarse dentro
+de pipeline.run() -- mismo formato, mismo comportamiento si no se
+especifican explicitamente.
+
+
+================================================================
+17. DEUDA TECNICA
+================================================================
+
+  1. transform_and_export fusiona 6 responsabilidades conceptuales en
+     una sola etapa (Mapping+Validation+Export+Manifest+Comparison+
+     Issues) -- documentado como adaptador temporal, no como diseño
+     final.
+  2. CanonicalBatch es un seam minimo sin uso funcional real todavia mas
+     alla de trazabilidad en context.state.
+  3. No se implemento ningun rule_type de la Mapping Specification --
+     Drills sigue usando sus funciones de transformacion propias.
+  4. La combinacion Core + modo full + SQL real nunca se ha probado (no
+     autorizado en esta fase).
+
+Ver framework-core-v1.md §19 para el detalle completo.
+
+
+================================================================
+18. RIESGOS
+================================================================
+
+  - Diseño validado con un unico consumidor (Drills) -- no probado
+    empiricamente con un segundo objeto migrable todavia.
+  - La fusion de transform_and_export podria no generalizar bien cuando
+    llegue un segundo objeto con reglas mas complejas -- riesgo aceptado
+    deliberadamente (principio "No Abstraction Without a Real Consumer").
+  - .claude/settings.local.json se modifico automaticamente por el
+    propio Claude Code (registro de permisos), no por una accion
+    explicita de esta tarea -- señalado por transparencia, sin impacto
+    funcional.
+
+
+================================================================
+19. ADR CREADA O JUSTIFICACION
+================================================================
+
+Se creo ADR-016 -- "Framework Core: Execution Pipeline, Stage Registry y
+propagacion de errores" (Status: Approved Design, ya implementada y
+probada en esta misma fase). Justificacion: ninguna ADR existente fijaba
+el modelo de ejecucion concreto, el mecanismo de registro de etapas, ni
+la propagacion de errores durante una ejecucion -- decisiones
+estructurales nuevas, no cubiertas por ADR-013/014/015. Indice
+actualizado (docs/02-adr/README.md), proximo numero libre: ADR-017.
+
+
+================================================================
+20. RESULTADO DE git diff --check
+================================================================
+
+  warning: in the working copy of '.claude/settings.local.json', LF will
+  be replaced by CRLF...
+  warning: in the working copy of 'config/exports/drills.yaml', LF will
+  be replaced by CRLF...
+  exit=0
+
+Limpio -- solo avisos informativos de normalizacion de fin de linea, sin
+errores de espacio en blanco.
+
+
+================================================================
+21. RESULTADO DE git status --short
+================================================================
+
+   M .claude/settings.local.json
+   M config/exports/drills.yaml
+   M src/cli.py
+   M src/export/prototype/drills/pipeline.py
+  ?? src/core/
+  ?? src/export/prototype/drills/core_adapters.py
+  ?? tests/test_core_contracts.py
+  ?? tests/test_core_orchestrator.py
+  ?? tests/test_core_registry.py
+  ?? tests/test_drills_core_pipeline.py
+  ?? docs/... (incluye framework-core-v1.md y ADR-016, ademas de todo lo
+     ya generado en tareas anteriores de esta sesion, sin trackear desde
+     el inicio)
+  ?? reports/executions/2026-07-27/Informe-Framework-Core-V1-EMF.{md,txt}
+
+
+================================================================
+22. RESULTADO DE git diff --stat
+================================================================
+
+   .claude/settings.local.json             |  11 ++-
+   config/exports/drills.yaml              |  13 ++++
+   src/cli.py                              | 115 ++++++++++++++++++++++
+   src/export/prototype/drills/pipeline.py |  24 +++++--
+   4 files changed, 158 insertions(+), 5 deletions(-)
+
+(Los ficheros nuevos, por definicion, no aparecen en git diff --stat --
+git no los conoce todavia; se listan en §5.)
+
+
+================================================================
+23. RECOMENDACION DE SIGUIENTE PASO
+================================================================
+
+Con el Core implementado y Drills funcionando a traves de el, el
+siguiente paso natural (siguiendo el orden ya aprobado en ADR-014
+§Consequences, ahora con el Core como cuarto hito cumplido) es VALIDAR
+CON UN SEGUNDO CONSUMIDOR REAL antes de generalizar mas: candidato mas
+simple, un segundo object_type sencillo (o el propio Drills en modo
+full, contra SQL Server real, cuando se autorice explicitamente) -- es
+el primer punto en que se sabra si transform_and_export necesita dejar
+de ser una unica etapa fusionada, y si CanonicalBatch necesita
+evolucionar hacia el CDM completo. No se recomienda generalizar ninguno
+de los dos sin esa evidencia.
+
+No se realizo commit de ningun cambio.

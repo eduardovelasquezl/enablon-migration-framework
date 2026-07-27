@@ -31,7 +31,7 @@ from . import mappings as mappings_mod
 from . import transformations as tr
 from .config import DrillsExportConfig, load_drills_config
 from .exporter import write_csv
-from .extractor import MODE_FULL, MODE_SAMPLE, extract_drills
+from .extractor import MODE_FULL, MODE_SAMPLE, ExtractionResult, extract_drills
 from .manifest import (
     RunStats,
     build_export_manifest,
@@ -369,12 +369,27 @@ def run(
     limit: int = 100,
     output_root: str | Path | None = None,
     compiled_filters: Sequence[CompiledFilter] | None = None,
+    extraction: ExtractionResult | None = None,
+    run_id: str | None = None,
+    timestamp: str | None = None,
 ) -> PipelineResult:
+    """Orquesta la exportación completa de Drills.
+
+    `extraction`, `run_id` y `timestamp` son parámetros ADITIVOS (Framework
+    Core v1, ver `src/export/prototype/drills/core_adapters.py`): si se
+    omiten (el caso de cualquier llamador existente -- CLI, tests), el
+    comportamiento es IDÉNTICO al de antes de este incremento -- se genera
+    un `run_id`/`timestamp` nuevos y se ejecuta `extract_drills()`
+    internamente, exactamente como siempre. Si se proporcionan, permiten
+    que un orquestador externo reutilice una extracción ya realizada por
+    una etapa `query` separada (evitando repetir la consulta SQL) y alinee
+    `run_id`/`timestamp` con su propio `execution_id`/carpeta de salida.
+    """
     if mode not in (MODE_SAMPLE, MODE_FULL):
         raise ValueError(f"Modo no soportado: {mode!r}")
 
-    run_id = uuid.uuid4().hex[:12]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = run_id or uuid.uuid4().hex[:12]
+    timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     config = load_drills_config()
 
@@ -390,7 +405,8 @@ def run(
         run_id, mode, config.source.connection, output_dir, len(compiled_filters or ()),
     )
 
-    extraction = extract_drills(config, mode=mode, limit=limit, compiled_filters=compiled_filters)
+    if extraction is None:
+        extraction = extract_drills(config, mode=mode, limit=limit, compiled_filters=compiled_filters)
 
     # Query Engine v0.1: si hubo filtros, escribir generated_query.sql
     # (placeholders únicamente, nunca valores) -- documentado ANTES de

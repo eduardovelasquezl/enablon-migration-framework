@@ -14,10 +14,19 @@ from pathlib import Path
 import click
 
 from src.config import PROJECT_ROOT
+from src.core.contracts import ExecutionRequest
+from src.core.exceptions import CoreError
+from src.core.orchestrator import PipelineOrchestrator
+from src.core.registry import StageRegistry
 from src.db.exceptions import DatabaseError
 from src.evidence.collector import resolve_run_dir, load_run
 from src.evidence.models import EvidenceSourceError
 from src.evidence.workbook import build_workbook, save_workbook
+from src.export.prototype.drills.core_adapters import (
+    build_drills_pipeline_definition,
+    build_execution_context,
+    register_drills_stages,
+)
 from src.export.prototype.drills.extractor import MODE_FULL, MODE_SAMPLE
 from src.export.prototype.drills.pipeline import run as run_drills_export
 from src.query.catalog import DRILLS_FILTER_CATALOG
@@ -234,6 +243,112 @@ def evidence_drills(run_ref: str | None, audience: str) -> None:
 
     for path in written:
         click.echo(f"evidencia:          {path}")
+
+
+_CORE_SUPPORTED_OBJECT_TYPES = ("drills",)
+
+
+@cli.command("run")
+@click.option("--project", required=True, help="Nombre del proyecto (p. ej. 'moeve').")
+@click.option(
+    "--object", "object_type", required=True,
+    help=f"Objeto migrable a ejecutar a través del Framework Core (hoy: {_CORE_SUPPORTED_OBJECT_TYPES}).",
+)
+@click.option("--module", "module_", default=None, help="Módulo del objeto (p. ej. 'simulacros').")
+@click.option(
+    "--mode", type=click.Choice([MODE_SAMPLE, MODE_FULL]), default=MODE_SAMPLE, show_default=True,
+    help="'sample' trunca localmente a --limit filas; 'full' exporta todo.",
+)
+@click.option("--limit", type=int, default=100, show_default=True, help="Filas máximas en modo 'sample'.")
+@click.option(
+    "--confirm-full-export", is_flag=True, default=False,
+    help="Obligatorio junto con --mode full -- evita ejecutar una exportación completa por accidente.",
+)
+@click.option(
+    "--output-dir", type=str, default=None,
+    help="Directorio raíz de salida. Por defecto: el mismo que usa 'export drills' hoy.",
+)
+@click.option(
+    "--generate-evidence", is_flag=True, default=False,
+    help="Genera evidence_internal.xlsx / evidence_client.xlsx al terminar la exportación.",
+)
+@click.option(
+    "--audience", type=click.Choice(_AUDIENCES), default="both", show_default=True,
+    help="Con --generate-evidence: qué versión(es) del Excel generar.",
+)
+@click.option(
+    "--filter", "filters", multiple=True, default=(),
+    help="Filtro reutilizable 'campo:operador:valor' (repetible) -- mismo catálogo que 'export drills'.",
+)
+def run_pipeline(
+    project: str, object_type: str, module_: str | None, mode: str, limit: int,
+    confirm_full_export: bool, output_dir: str | None, generate_evidence: bool,
+    audience: str, filters: tuple[str, ...],
+) -> None:
+    """Ejecuta un objeto migrable a través del Framework Core v1
+    (Execution Pipeline genérico, Fase 6 del roadmap EMF -- ver
+    docs/01-architecture/framework-core-v1.md).
+
+    Hoy solo 'drills' está registrado como consumidor del Core. El comando
+    'export drills' sigue siendo el camino existente sin cambios -- este
+    comando es una entrada NUEVA que demuestra la integración genérica,
+    no un reemplazo.
+    """
+    if object_type not in _CORE_SUPPORTED_OBJECT_TYPES:
+        click.echo(
+            f"ERROR: objeto no soportado todavía por el Framework Core: {object_type!r} "
+            f"(disponibles: {_CORE_SUPPORTED_OBJECT_TYPES}).", err=True,
+        )
+        sys.exit(1)
+
+    try:
+        request = ExecutionRequest(
+            project=project, object_type=object_type, module=module_, mode=mode, limit=limit,
+            output_dir=output_dir, confirm_full_export=confirm_full_export,
+            generate_evidence=generate_evidence, evidence_audience=audience, filters=tuple(filters),
+        )
+    except CoreError as exc:
+        click.echo(f"ERROR de configuración: {exc}", err=True)
+        sys.exit(1)
+
+    registry = StageRegistry()
+    register_drills_stages(registry)
+    definition = build_drills_pipeline_definition()
+    context = build_execution_context(request)
+    orchestrator = PipelineOrchestrator(registry)
+
+    click.echo("=== Framework Core v1 -- Execution Pipeline ===")
+    click.echo(f"  proyecto:        {project}")
+    click.echo(f"  objeto:          {object_type}")
+    click.echo(f"  modo:            {mode}")
+    click.echo(f"  etapas:          {' -> '.join(definition.stages)}")
+    click.echo(f"  execution_id:    {context.execution_id}")
+    click.echo("")
+
+    try:
+        result = orchestrator.run(definition, context)
+    except DatabaseError as exc:
+        click.echo(f"ERROR de base de datos: {exc}", err=True)
+        sys.exit(1)
+    except QueryEngineError as exc:
+        click.echo(f"ERROR de filtro: {exc}", err=True)
+        sys.exit(1)
+    except CoreError as exc:
+        click.echo(f"ERROR del Core: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Resultado:          {result.status}")
+    click.echo(f"Duración:           {result.duration_seconds:.2f}s")
+    click.echo(f"Etapas ejecutadas:  {len(result.stage_results)}")
+    for stage_result in result.stage_results:
+        click.echo(f"  - {stage_result.stage}: {stage_result.status}")
+    click.echo(f"Artefactos:")
+    for artifact in result.artifacts:
+        click.echo(f"  - [{artifact.stage}] {artifact.name}: {artifact.path}")
+    click.echo(f"Incidencias acumuladas: {len(result.issues)}")
+
+    if result.status == "failed":
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -36,10 +36,11 @@ inmediatamente después del número más alto ya usado por la secuencia legada
 | [ADR-013](ADR-013-mappings-as-data.md) | Mappings as Data | Approved Design |
 | [ADR-014](ADR-014-canonical-data-model.md) | Canonical Data Model: conjunto de entidades y estrategia de identidad | Proposed (en revisión arquitectónica) |
 | [ADR-015](ADR-015-mapping-specification.md) | Mapping Specification: modelo de reglas, conflictos y TransformationTrace | Proposed |
+| [ADR-016](ADR-016-framework-core-execution-pipeline.md) | Framework Core: Execution Pipeline, Stage Registry y propagación de errores | Implemented |
 
 ## Próximo número disponible
 
-**ADR-016.** Toda ADR nueva, legada o de producto, se numera consecutiva a
+**ADR-017.** Toda ADR nueva, legada o de producto, se numera consecutiva a
 partir de aquí — antes de crear una ADR nueva, comprobar este índice para
 confirmar el siguiente número libre.
 

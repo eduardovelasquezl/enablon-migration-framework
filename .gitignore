@@ -11,6 +11,11 @@ __pycache__/
 venv/
 
 # Datos — pueden ser pesados y/o sensibles (datos reales del cliente)
+# Carpeta de recepción bruta del cliente -- ficheros que superan el límite
+# de tamaño de GitHub (varios .xlsx/.csv >90MB). Se conserva localmente,
+# nunca en el repositorio.
+inputs/_incoming_claude_web/
+
 inputs/etl/*
 !inputs/etl/.gitkeep
 inputs/csv_enablon/*

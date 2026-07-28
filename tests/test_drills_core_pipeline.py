@@ -222,12 +222,19 @@ def test_columnas_de_referencia_no_han_cambiado():
 # --------------------------------------------------------------------------
 
 def test_ejecutar_via_cli_generico_sin_sql_real(tmp_path):
+    """Sprint 8.6.1: run_query está mockeado (fixture autouse de este
+    fichero) -- ninguna conexión SQL real se abre -- pero el SQL
+    Execution Guard de la CLI (src/cli.py) no distingue eso de una
+    ejecución real, así que --allow-real-sql sigue siendo obligatorio
+    para pasar la puerta de la CLI (el mock vive más abajo, en
+    extractor.run_query, no en la CLI). Sin credenciales reales, sin
+    riesgo -- solo autoriza el flujo de la CLI."""
     from src.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, [
         "run", "--project", "moeve", "--object", "drills", "--mode", "sample",
-        "--limit", "10", "--output-dir", str(tmp_path),
+        "--limit", "10", "--output-dir", str(tmp_path), "--allow-real-sql",
     ])
 
     assert result.exit_code == 0, result.output

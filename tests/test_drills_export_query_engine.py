@@ -205,6 +205,10 @@ def test_cli_filtro_valido_se_incluye_en_el_resumen(fake_run_query, monkeypatch,
             "export", "drills", "--mode", "sample", "--limit", "10",
             "--filter", "center_id:eq:25",
             "--output-dir", str(tmp_path),
+            "--allow-real-sql",  # Sprint 8.6.1: run_query está mockeado (fake_run_query),
+            # pero el SQL Execution Guard de la CLI sigue exigiendo la bandera --
+            # el mock vive en extractor.run_query, no en la CLI. Ver
+            # docs/01-architecture/sql-execution-guard.md.
         ],
     )
     assert result.exit_code == 0, result.output

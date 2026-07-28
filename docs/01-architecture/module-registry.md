@@ -204,9 +204,21 @@ un `ModuleRegistry` nuevo y registra Drills en él.
 
 ```
 CLI → build_default_module_registry() → ensure_capability(object, "export")
-    → ensure_capability(module_id, mode) → get_pipeline_factory(module_id)
-    → pipeline_factory(request, StageRegistry()) → PipelineOrchestrator.run()
+    → ensure_capability(module_id, mode) → SQL Execution Guard (--allow-real-sql)
+    → get_pipeline_factory(module_id) → pipeline_factory(request, StageRegistry())
+    → PipelineOrchestrator.run()
 ```
+
+**Sprint 8.6.1**: entre la resolución de capacidades y la construcción de
+la petición se añadió el SQL Execution Guard (`--allow-real-sql`/
+`EMF_ALLOW_REAL_SQL=1`, ver `docs/01-architecture/sql-execution-guard.md`)
+-- deliberadamente DESPUÉS de las comprobaciones de `ModuleRegistry` (que
+son baratas y sin efectos secundarios: un `--object` mal escrito da un
+`UnknownModuleError` claro sin necesitar primero resolver la autorización
+SQL) y ANTES de construir el `ExecutionRequest`/invocar la
+`pipeline_factory` -- es la última puerta antes de cualquier trabajo real.
+`ModuleRegistry` en sí no conoce el guard (siguen siendo capas
+separadas); la composición vive en `src/cli.py`.
 
 Ningún condicional específico de Drills queda en la ruta genérica de
 `run` -- ni el `if object_type not in (...)` ni los imports directos de

@@ -17,6 +17,13 @@ bases GCT y Prevencion, y `public` como único rol de servidor -- sin GRANT
 SELECT explícito documentado ni asumido). `ApplicationIntent=ReadOnly` en
 la cadena de conexión es una señal de enrutamiento adicional para Always On
 Availability Groups, NO un control de seguridad por sí mismo.
+
+Sprint 8.6.1 (SQL Execution Guard): que el entorno TENGA conectividad real
+(credenciales válidas, red accesible) nunca implica autorización de uso --
+`get_engine()` exige una autorización explícita y vigente para la
+ejecución actual (`src.db.sql_execution_guard`) antes de construir el
+`Engine`, independientemente de si la operación es `sample` o `full`. Ver
+`docs/01-architecture/sql-execution-guard.md`.
 """
 from __future__ import annotations
 
@@ -31,6 +38,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.config import get_database_config
 from src.db.exceptions import DatabaseConfigurationError
+from src.db.sql_execution_guard import require as require_real_sql_authorization
 
 _env_loaded = False
 
@@ -150,8 +158,17 @@ def get_engine(name: str | None = None) -> Engine:
     llamada dentro del mismo proceso. `create_engine` no conecta de forma
     inmediata (es perezoso) -- el primer intento de red ocurre en el
     primer `.connect()`/ejecución real.
+
+    Sprint 8.6.1: exige `src.db.sql_execution_guard.require()` ANTES de
+    `create_engine()` -- es el único chokepoint universal (todo lo demás
+    que puede abrir SQL real pasa por aquí, directa o transitivamente:
+    `run_query`, `src.db.metadata.*`, `src.analysis.sql_inventory`), así
+    que basta gatear aquí para cubrir cualquier camino presente o futuro.
+    Una excepción no se cachea (`lru_cache` no memoriza excepciones) -- un
+    segundo intento, ya autorizado, vuelve a evaluarse desde cero.
     """
     spec = get_connection_spec(name)
+    require_real_sql_authorization(spec.name)
     try:
         return create_engine(spec.to_sqlalchemy_url(), pool_pre_ping=True)
     except SQLAlchemyError as exc:

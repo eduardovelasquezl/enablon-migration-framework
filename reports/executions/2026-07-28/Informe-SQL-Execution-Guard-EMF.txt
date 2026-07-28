@@ -1,0 +1,276 @@
+========================================================
+INFORME DE EJECUCION -- SPRINT 8.6.1: SQL EXECUTION GUARD
+========================================================
+
+Fecha: 2026-07-28  Rama: feature/drills-filtered-exports  Remoto: origin -> enablon-migration-framework
+
+================================================================
+1. Resumen ejecutivo
+================================================================
+
+Se implemento el SQL Execution Guard: un unico punto de bloqueo (src/db/connection.py::get_engine(), justo antes de create_engine()) que exige una autorizacion explicita y vigente (src/db/sql_execution_guard.py) antes de permitir la construccion de cualquier motor de conexion real. La CLI (run, export drills) exige --allow-real-sql (o EMF_ALLOW_REAL_SQL=1) para sample y full por igual -- full sigue exigiendo, ademas, la confirmacion ya existente --confirm-full-export. Sin autorizacion: bloqueo antes de tocar SQL, sin outputs generados, mensaje seguro sin secretos. CLAUDE.md se corrigio para reflejar la realidad del entorno (si tiene conectividad SQL real; la disponibilidad no implica autorizacion). La suite paso de 612 a 647 casos en verde (+35), 7 skipped sin cambios. No se hizo ningun commit.
+
+================================================================
+2. Estado inicial
+================================================================
+
+  * Rama y remoto correctos. git diff --check: sin errores.
+  * Unico cambio automatico: .claude/settings.local.json -- restaurado.
+  * Suite completa antes de empezar: 612 passed, 7 skipped -- confirma la referencia del encargo.
+  * Sprints 8.4, 8.5 y 8.6 confirmados sin commit.
+  * Confirmado: no existen outputs del incidente en el arbol de trabajo (reports/20260728T083255Z/ ya no existia, eliminado durante Sprint 8.6 antes de que este sprint empezara) y ningun dato real esta versionado.
+  * Ningun comando que pudiera abrir SQL se ejecuto durante la Fase 0/1 (inventario por lectura de codigo, no por ejecucion).
+
+================================================================
+3. Inventario de puntos de conexion (Fase 1)
+================================================================
+
+  * src/db/connection.py::get_engine() -- unico chokepoint universal -- SI puede abrir SQL -- sin proteccion previa -- GATEADO AQUI (unico cambio de codigo real).
+  * src/db/query_runner.py::run_query()/run_query_file()/grouped_count() -- via get_engine() -- validate_read_only_sql (contenido, sin cambios) -- cubierto automaticamente.
+  * src/db/metadata.py::list_tables()/describe_table()/row_count() -- via get_engine() directo, bypassa validate_read_only_sql (usa inspector SQLAlchemy) -- cubierto automaticamente (sin este chokepoint unico, habria quedado sin cubrir).
+  * src/analysis/sql_inventory.py::run_sql_inventory() -- via run_query_file -- sin comando CLI que lo use hoy -- cubierto automaticamente.
+  * src/export/prototype/drills/extractor.py::extract_drills() -- via run_query -- cubierto automaticamente.
+  * src/export/prototype/drills/core_adapters.py::DrillsQueryStage -- via extract_drills -- cubierto automaticamente.
+  * src/cli.py::run_pipeline ("run") -- cadena completa -- solo --confirm-full-export (volumen de full, no gateaba sample) -- --allow-real-sql ANADIDO.
+  * src/cli.py::export_drills ("export drills") -- cadena completa -- mismo hueco -- --allow-real-sql ANADIDO.
+  * tests/test_db_connection.py (no-integracion) -- solo con fake_config -- fixture actualizada (source="test").
+  * tests/test_db_query_runner.py / test_db_metadata.py -- mockean get_engine directamente, nunca llegan al real -- sin cambios (exentos por diseno).
+  * Tests de integracion real (test_db_connection.py, test_sql_inventory.py, test_drills_export_integration.py) -- gateados por RUN_SQL_INTEGRATION_TESTS=1 / RUN_DRILLS_EXPORT_INTEGRATION_TESTS=1, skipif, desactivados por defecto -- sin cambios, confirmado que siguen skip.
+  * workspace validate/resolve, modules list/show, evidence drills -- sin SQL -- sin cambios.
+
+================================================================
+4. Causa raiz
+================================================================
+
+--confirm-full-export protegia el VOLUMEN de una exportacion full, nunca la DECISION de abrir una conexion SQL real -- y sample (el modo por defecto de ambos comandos) no tenia ninguna comprobacion equivalente. El entorno de trabajo tiene conectividad real legitima (usuario readonly ClaudeReadOnly), asi que cualquier invocacion manual sin mock, incluso en sample, abria una conexion real sin que nada lo impidiera. CLAUDE.md ademas afirmaba lo contrario, reforzando la falsa sensacion de seguridad que llevo al incidente de Sprint 8.6.
+
+================================================================
+5. Modelo de autorizacion
+================================================================
+
+src/db/sql_execution_guard.py:
+
+  SqlExecutionAuthorization(source: "cli_flag"|"env_var"|"test", granted_at: datetime)
+  grant(*, source) / revoke() / is_authorized() / require(connection_name)  -- RealSqlNotAuthorizedError si no autorizado
+
+Estado de modulo controlado (no un parametro enhebrado por ExecutionRequest/PipelineFactory/DrillsQueryStage/extract_drills/run_query -- cambio de alto riesgo evitado deliberadamente), expuesto unicamente via esa API. Empieza en None en cada proceso nuevo (fail closed). tests/conftest.py lo revoca de forma autouse antes y despues de cada test.
+
+================================================================
+6. Comandos protegidos
+================================================================
+
+run y export drills: --allow-real-sql (flag) o EMF_ALLOW_REAL_SQL=1 (variable, equivalente, no se exigen ambos). Comprobado DESPUES de las validaciones baratas ya existentes (modulo/capacidad en run; limit/modo/confirmacion/filtros en export drills) y ANTES de construir la peticion real o invocar el pipeline. workspace validate/resolve, modules list/show, evidence drills: sin cambios.
+
+================================================================
+7. Comportamiento sample
+================================================================
+
+Requiere --allow-real-sql igual que full -- antes de este sprint no requeria nada (causa raiz exacta del incidente, § 4). Sin la bandera: bloqueo antes de create_engine(), sin outputs, exit code 1.
+
+================================================================
+8. Comportamiento full
+================================================================
+
+Requiere --allow-real-sql Y --confirm-full-export -- ninguno sustituye al otro (verificado por test en sus 4 combinaciones).
+
+================================================================
+9. Incidente (Sprint 8.6) -- tratamiento formal
+================================================================
+
+CLASIFICACION: Accidental readonly execution -- contained.
+
+  * Comando ejecutado: python main.py run --project moeve --object simulacros --mode sample --limit 5 --output-dir "$(pwd)/reports", en shell, fuera de la suite de tests (sin mock de run_query).
+  * Resultado: conexion SQL real abierta contra "prevencion"; CINCO filas leidas. Ningun contenido de esas filas se incluye en este informe.
+  * Escrituras: NINGUNA -- login ClaudeReadOnly solo tiene db_datareader; consulta ejecutada fue la misma SELECT de siempre.
+  * Outputs: reports/20260728T083255Z/ se genero localmente y se elimino de inmediato con rm -rf en el mismo turno -- nunca git add, nunca commit (confirmado por git status antes/despues, y de nuevo al empezar este sprint).
+  * Causa raiz: ver § 4.
+  * Correccion aplicada: SQL Execution Guard (este sprint completo, § 5-8).
+  * Tests anadidos: 35 (§ 12), incluyen reproduccion especifica del escenario del incidente.
+  * Riesgo residual: ver § 17.
+
+No se califica como perdida ni exposicion de datos porque no hay evidencia de ello -- el archivo nunca salio del disco local, nunca se compartio, nunca se versiono.
+
+================================================================
+10. Modelo de commits futuro afectado
+================================================================
+
+Sin cambios de diseno adicionales -- ver § 19.
+
+================================================================
+11. Verificacion readonly
+================================================================
+
+query_runner.validate_read_only_sql() y _BLOCKED_TERMS sin modificar -- confirmado por inspeccion y por la suite existente (test_db_query_runner.py, sin cambios, sigue en verde). Ninguna prueba de este sprint ejecuta esa validacion contra SQL real.
+
+================================================================
+12. Tests
+================================================================
+
+Nuevos:
+  * tests/test_sql_execution_guard.py -- 12 tests.
+  * tests/test_cli_sql_execution_guard.py -- 23 tests.
+
+Modificados (adaptacion necesaria):
+  * tests/test_db_connection.py -- fixture fake_config concede autorizacion source="test".
+  * tests/test_drills_core_pipeline.py -- 1 test anade --allow-real-sql.
+  * tests/test_drills_export_query_engine.py -- 1 test anade --allow-real-sql.
+  * tests/conftest.py (nuevo) -- fixture autouse que revoca autorizacion antes/despues de cada test de toda la suite.
+
+================================================================
+13. Resultados
+================================================================
+
+612 passed, 7 skipped  (referencia inicial, confirmada al empezar)
+647 passed, 7 skipped  (al terminar -- +35, 0 nuevos skipped, 0 fallos)
+
+py_compile sin errores. CLI verificada exclusivamente con --help y CliRunner (SQL mockeado) -- ningun acceso real a SQL Server en ningun momento de este sprint.
+
+================================================================
+14. Compatibilidad
+================================================================
+
+Comandos sin SQL: sin cambios. run/export drills: CAMBIO DE COMPORTAMIENTO DELIBERADO -- ambos exigen ahora --allow-real-sql incluso en sample. Cualquier script externo que los invocara sin esa bandera empezara a fallar -- es la correccion pretendida, no una regresion. Tests de integracion real: mecanismo de opt-in sin cambios, confirmado que siguen skip por defecto.
+
+================================================================
+15. Archivos creados
+================================================================
+
+  * src/db/sql_execution_guard.py
+  * tests/conftest.py
+  * tests/test_sql_execution_guard.py
+  * tests/test_cli_sql_execution_guard.py
+  * docs/01-architecture/sql-execution-guard.md
+  * reports/executions/2026-07-28/Informe-SQL-Execution-Guard-EMF.md (+ .txt)
+
+================================================================
+16. Archivos modificados
+================================================================
+
+  * src/db/connection.py (gate en get_engine())
+  * src/cli.py (--allow-real-sql en run/export drills, banner de autorizacion no sensible)
+  * tests/test_db_connection.py, tests/test_drills_core_pipeline.py, tests/test_drills_export_query_engine.py (adaptaciones)
+  * CLAUDE.md (correccion de la fila de acceso SQL + nueva restriccion no negociable)
+  * docs/07-developer-guide/getting-started.md (fila nueva)
+  * docs/01-architecture/module-registry.md (§ 14, flujo CLI actualizado)
+
+No se modifico resource-resolver.md -- no aplica.
+
+================================================================
+17. Riesgos
+================================================================
+
+Estado de autorizacion es booleano de proceso, no atado a conexion concreta -- aceptable hoy, documentado como deuda tecnica. Cualquier script externo que invocara run/export drills sin --allow-real-sql empezara a fallar -- comportamiento pretendido; no se encontro ninguno en este repositorio.
+
+================================================================
+18. Deuda tecnica
+================================================================
+
+Ver sql-execution-guard.md § 13 (estado de autorizacion no atado a conexion concreta; query_timeout_seconds declarado en config/databases.yaml pero no aplicado en run_query(), detectado durante el inventario, no relacionado con autorizacion).
+
+================================================================
+19. Propuesta de commits consolidada -- Sprints 8.4, 8.5, 8.6 y 8.6.1 (NO ejecutados)
+================================================================
+
+Commit 1 -- Sprint 8.4 (Workspace Manifest): sin cambios respecto a Informe-Workspace-Manifest-EMF.md (2026-07-27).
+
+Commit 2 -- Sprint 8.5 (Resource Resolver): sin cambios respecto a Informe-Resource-Resolver-EMF.md (2026-07-28), incluyendo el hunk de workspace-manifest.md § 5/§ 6 corregido en Sprint 8.6.
+
+Commit 3 -- Sprint 8.6 (Module Registry): sin cambios respecto a Informe-Module-Registry-EMF.md (2026-07-28).
+
+Commit 4 -- Sprint 8.6.1 (SQL Execution Guard), este incremento, mensaje sugerido:
+
+  fix(security): require explicit authorization for real SQL execution
+
+  Adds a single chokepoint gate (src/db/connection.py::get_engine()) that
+  requires an explicit, per-execution authorization
+  (src/db/sql_execution_guard.py) before constructing a real SQLAlchemy
+  engine -- fail closed, independent of sample/full mode. Wires
+  --allow-real-sql (and EMF_ALLOW_REAL_SQL=1 as an equivalent) into both
+  `run` and `export drills`, checked after cheap/side-effect-free
+  validation and before any pipeline work. Corrects CLAUDE.md, which
+  incorrectly stated this environment lacks real SQL connectivity --
+  contained incident: an unmocked manual `run` invocation read 5 real
+  rows during Sprint 8.6 verification; no writes, outputs deleted before
+  versioning.
+
+Archivos: src/db/sql_execution_guard.py, src/db/connection.py (hunk), src/cli.py (hunks), tests/conftest.py, tests/test_sql_execution_guard.py, tests/test_cli_sql_execution_guard.py, tests/test_db_connection.py (hunk), tests/test_drills_core_pipeline.py (hunk), tests/test_drills_export_query_engine.py (hunk), CLAUDE.md, docs/01-architecture/sql-execution-guard.md, docs/07-developer-guide/getting-started.md (hunk), docs/01-architecture/module-registry.md (hunk), reports/executions/2026-07-28/Informe-SQL-Execution-Guard-EMF.md (+.txt).
+
+Excluir de cualquier commit: .claude/settings.local.json.
+
+================================================================
+20. git diff --check
+================================================================
+
+Sin errores de espacio en blanco (exit code 0) -- solo warnings de conversion LF->CRLF de Git en Windows.
+
+================================================================
+21. git status --short (al terminar este informe)
+================================================================
+
+ M .claude/settings.local.json
+ M CLAUDE.md
+ M config/data_workspace.yaml
+ M docs/01-architecture/extensibility-model.md
+ M docs/01-architecture/external-data-workspace.md
+ M docs/01-architecture/framework-core-v1.md
+ M docs/07-developer-guide/getting-started.md
+ M src/cli.py
+ M src/db/connection.py
+ M src/export/prototype/drills/pipeline.py
+ M tests/test_db_connection.py
+ M tests/test_drills_core_pipeline.py
+ M tests/test_drills_data_workspace_integration.py
+ M tests/test_drills_export_query_engine.py
+?? docs/01-architecture/drills-csv-contract.md
+?? docs/01-architecture/knowledge-coverage-matrix.md
+?? docs/01-architecture/knowledge-traceability-matrix.md
+?? docs/01-architecture/module-registry.md
+?? docs/01-architecture/project-contract-model.md
+?? docs/01-architecture/resource-resolver.md
+?? docs/01-architecture/sql-execution-guard.md
+?? docs/01-architecture/workspace-manifest.md
+?? docs/01-architecture/workspace-naming-convention.md
+?? docs/01-architecture/workspace-validation-checklist.md
+?? docs/07-developer-guide/drills-real-data-inventory.md
+?? examples/
+?? reports/executions/2026-07-27/...
+?? reports/executions/2026-07-28/
+?? src/bootstrap/
+?? src/core/module_registry.py
+?? src/core/resource_resolver.py
+?? src/core/workspace_manifest.py
+?? src/db/sql_execution_guard.py
+?? tests/conftest.py
+?? tests/test_bootstrap_module_registry.py
+?? tests/test_cli_modules.py
+?? tests/test_cli_sql_execution_guard.py
+?? tests/test_cli_workspace_resolve.py
+?? tests/test_cli_workspace_validate.py
+?? tests/test_module_registry.py
+?? tests/test_resource_resolver.py
+?? tests/test_sql_execution_guard.py
+?? tests/test_workspace_manifest.py
+
+================================================================
+22. git diff --stat (archivos tocados por Sprint 8.6.1)
+================================================================
+
+  src/db/sql_execution_guard.py             nuevo (~120 lineas)
+  src/db/connection.py                       +~17
+  src/cli.py                                 +~90 -~15 (del total +317/-15, el resto es Sprint 8.6)
+  tests/conftest.py                          nuevo (~25 lineas)
+  tests/test_sql_execution_guard.py          nuevo (~170 lineas)
+  tests/test_cli_sql_execution_guard.py      nuevo (~250 lineas)
+  tests/test_db_connection.py                +~13
+  tests/test_drills_core_pipeline.py         +~7 -~1
+  tests/test_drills_export_query_engine.py   +~4
+  CLAUDE.md                                  +~11
+  docs/01-architecture/sql-execution-guard.md nuevo (~180 lineas)
+  docs/07-developer-guide/getting-started.md +~2
+  docs/01-architecture/module-registry.md    +~12
+
+================================================================
+23. Recomendacion
+================================================================
+
+Sprint 8.6.1 completo segun los criterios de aceptacion del encargo. El riesgo que motivo este sprint queda cerrado: sample y full requieren autorizacion explicita por igual, el gate esta en el unico chokepoint real, y CLAUDE.md ya no induce a error sobre la conectividad del entorno. Recomendado, antes de proceder con los 4 commits de § 19: confirmacion explicita del usuario de que el flujo --allow-real-sql es el que espera usar en el dia a dia (o si prefiere fijar EMF_ALLOW_REAL_SQL=1 de forma mas permanente en su entorno local, fuera de este repositorio).

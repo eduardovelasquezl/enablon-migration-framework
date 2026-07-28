@@ -62,6 +62,7 @@ para el procedimiento de recuperación tras el incidente de Sprint 6.
 | Lo que existe hoy | Dónde | Generalizado? |
 |---|---|---|
 | Conexión SQL de solo lectura | `src/db/` | No — es el único Connector, sin interfaz formal |
+| SQL Execution Guard | `src/db/sql_execution_guard.py` | Sí — genérico, gatea el único chokepoint (`get_engine()`) para cualquier módulo presente o futuro. **Importante**: el entorno puede tener conectividad SQL real; todo acceso real exige `--allow-real-sql`/`EMF_ALLOW_REAL_SQL=1` explícito, ver `sql-execution-guard.md` |
 | Query Runner | `src/db/query_runner.py` | Parcial — reutilizable, sin abstracción de "Connector" todavía |
 | Query Engine v0.1 | `src/query/` | No — catálogo cerrado específico de Drills |
 | Prototype Export de Drills | `src/export/prototype/drills/` | No — SQL→CSV íntegramente específico de Drills |

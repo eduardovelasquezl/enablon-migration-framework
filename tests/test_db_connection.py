@@ -22,6 +22,7 @@ from sqlalchemy.engine import URL
 from src.db.connection import ConnectionSpec, get_connection_spec, get_engine
 from src.db.exceptions import DatabaseConfigurationError
 from src.db.query_runner import run_query
+from src.db import sql_execution_guard
 
 FAKE_CONNECTION_CONFIG = {
     "description": "conexión falsa para tests",
@@ -44,14 +45,24 @@ FAKE_ENV = {
 @pytest.fixture
 def fake_config(monkeypatch):
     """Sustituye get_database_config por una conexión sintética y evita que
-    _ensure_env_loaded intente cargar un .env real."""
+    _ensure_env_loaded intente cargar un .env real.
+
+    Sprint 8.6.1: `get_engine()` real ahora exige autorización de SQL Execution
+    Guard (ver `src/db/sql_execution_guard.py`) antes de `create_engine()` --
+    esta fixture la concede con `source="test"` porque los tests que la usan
+    (caché de engine, "no conecta de inmediato") ejercitan `get_engine()` de
+    verdad, sin llegar nunca a `.connect()`. `tests/conftest.py` ya revoca
+    cualquier autorización al final de cada test (autouse); aquí se revoca
+    también explícitamente por claridad local."""
     monkeypatch.setattr("src.db.connection.get_database_config", lambda name=None: FAKE_CONNECTION_CONFIG)
     monkeypatch.setattr("src.db.connection._ensure_env_loaded", lambda: None)
     for key, value in FAKE_ENV.items():
         monkeypatch.setenv(key, value)
+    sql_execution_guard.grant(source="test")
     get_engine.cache_clear()
     yield
     get_engine.cache_clear()
+    sql_execution_guard.revoke()
 
 
 # --------------------------------------------------------------------------

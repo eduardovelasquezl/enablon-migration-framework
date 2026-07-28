@@ -8,6 +8,7 @@ ver `docs/specifications/v1.0/export/closing_recommendation.md`.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -40,9 +41,46 @@ from src.core.resource_resolver import (
     ResourceResolutionError,
     ResourceResolver,
 )
+from src.db import sql_execution_guard
 
 _ALLOWED_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 _AUDIENCES = ("internal", "client", "both")
+
+
+def _authorize_real_sql(allow_real_sql: bool, *, command: str) -> bool:
+    """Comprobación previa a cualquier operación que pueda abrir una
+    conexión SQL real (Sprint 8.6.1 -- SQL Execution Guard). Se llama al
+    principio del comando, ANTES de construir cualquier `ExecutionRequest`,
+    registro o directorio de salida -- sin outputs generados si se
+    bloquea.
+
+    Devuelve `True`/imprime nada si se concede autorización (y la deja
+    concedida en `sql_execution_guard` para el resto del proceso, que es
+    el chokepoint real que aplica el bloqueo en
+    `src.db.connection.get_engine()`). Devuelve `False` e imprime un
+    mensaje seguro (sin credenciales, sin cadenas de conexión) si no.
+
+    Independiente de `sample`/`full`: ambos modos pueden abrir SQL real,
+    ambos requieren esta autorización -- `--confirm-full-export` es una
+    confirmación ADICIONAL, específica de `full`, nunca un sustituto.
+    """
+    if allow_real_sql:
+        sql_execution_guard.grant(source="cli_flag")
+        return True
+    if os.environ.get(sql_execution_guard.ENV_VAR) == "1":
+        sql_execution_guard.grant(source="env_var")
+        return True
+
+    click.echo(f"=== {command} -- SQL Execution Guard ===", err=True)
+    click.echo("ERROR: esta operación puede abrir una conexión SQL Server real.", err=True)
+    click.echo("Está bloqueada por defecto -- la disponibilidad de credenciales", err=True)
+    click.echo("no implica autorización de uso.", err=True)
+    click.echo("", err=True)
+    click.echo("Añade --allow-real-sql tras recibir autorización técnica explícita", err=True)
+    click.echo(f"(o exporta {sql_execution_guard.ENV_VAR}=1).", err=True)
+    click.echo("", err=True)
+    click.echo("No se abrió ninguna conexión. No se generó ningún output.", err=True)
+    return False
 
 
 def _generate_evidence(run_dir: Path, audience: str) -> list[Path]:
@@ -128,9 +166,17 @@ def _validate_output_dir(value: str | None) -> Path | None:
         "workflow_status_source -- ver 'Filtered exports' en README.md."
     ),
 )
+@click.option(
+    "--allow-real-sql", is_flag=True, default=False,
+    help=(
+        "Obligatorio (junto con EMF_ALLOW_REAL_SQL=1 como alternativa) para autorizar "
+        "esta ejecución a abrir una conexión SQL Server real -- bloqueado por defecto, "
+        "para 'sample' y 'full' por igual. Ver docs/01-architecture/sql-execution-guard.md."
+    ),
+)
 def export_drills(
     mode: str, limit: int, confirm_full_export: bool, output_dir: str | None,
-    generate_evidence: bool, audience: str, filters: tuple[str, ...],
+    generate_evidence: bool, audience: str, filters: tuple[str, ...], allow_real_sql: bool,
 ) -> None:
     """Genera drills.csv + validation_report.yaml + export_manifest.yaml
     (+ comparison_report.yaml si hay CSV histórico) para simulacros.Drills.
@@ -158,9 +204,19 @@ def export_drills(
         click.echo(f"ERROR de filtro: {exc}", err=True)
         sys.exit(1)
 
+    # SQL Execution Guard (Sprint 8.6.1): último control antes de tocar SQL
+    # real -- todas las validaciones de entrada anteriores (limit, modo,
+    # filtros) son baratas y sin efectos secundarios, así que se
+    # comprueban primero (mejores mensajes de error); esta es la última
+    # comprobación antes de generar cualquier output real.
+    if not _authorize_real_sql(allow_real_sql, command="export drills"):
+        sys.exit(1)
+
+    auth = sql_execution_guard.current_authorization()
     click.echo("=== Prototype Export -- simulacros.Drills ===")
     click.echo(f"  objeto:            Drills (simulacros)")
-    click.echo(f"  conexion:          prevencion")
+    click.echo(f"  conexion:          prevencion (readonly)")
+    click.echo(f"  autorizacion SQL:  concedida (fuente={auth.source}, {auth.granted_at.isoformat()})")
     click.echo(f"  modo:              {mode}")
     click.echo(f"  limite (sample):   {limit if mode == MODE_SAMPLE else 'N/A'}")
     click.echo(f"  salida (raiz):     {resolved_output_dir or (PROJECT_ROOT / 'outputs' / 'prototype' / 'drills')}")
@@ -288,10 +344,18 @@ def evidence_drills(run_ref: str | None, audience: str) -> None:
     "--filter", "filters", multiple=True, default=(),
     help="Filtro reutilizable 'campo:operador:valor' (repetible) -- mismo catálogo que 'export drills'.",
 )
+@click.option(
+    "--allow-real-sql", is_flag=True, default=False,
+    help=(
+        "Obligatorio (junto con EMF_ALLOW_REAL_SQL=1 como alternativa) para autorizar "
+        "esta ejecución a abrir una conexión SQL Server real -- bloqueado por defecto, "
+        "para 'sample' y 'full' por igual. Ver docs/01-architecture/sql-execution-guard.md."
+    ),
+)
 def run_pipeline(
     project: str, object_type: str, module_: str | None, mode: str, limit: int,
     confirm_full_export: bool, output_dir: str | None, generate_evidence: bool,
-    audience: str, filters: tuple[str, ...],
+    audience: str, filters: tuple[str, ...], allow_real_sql: bool,
 ) -> None:
     """Ejecuta un objeto migrable a través del Framework Core v1
     (Execution Pipeline genérico, Fase 6 del roadmap EMF -- ver
@@ -310,6 +374,14 @@ def run_pipeline(
         module_registry.ensure_capability(module_def.module_id, mode)
     except ModuleRegistryError as exc:
         click.echo(f"ERROR de módulo ({type(exc).__name__}): {exc}", err=True)
+        sys.exit(1)
+
+    # SQL Execution Guard (Sprint 8.6.1): último control antes de tocar SQL
+    # real -- la resolución de módulo/capacidad anterior es barata y sin
+    # efectos secundarios (mejor mensaje de error si --object es un typo);
+    # esta es la última comprobación antes de construir la petición y
+    # ejecutar el pipeline real.
+    if not _authorize_real_sql(allow_real_sql, command="run"):
         sys.exit(1)
 
     try:
@@ -331,9 +403,11 @@ def run_pipeline(
     definition, context = pipeline_factory(request, stage_registry)
     orchestrator = PipelineOrchestrator(stage_registry)
 
+    auth = sql_execution_guard.current_authorization()
     click.echo("=== Framework Core v1 -- Execution Pipeline ===")
     click.echo(f"  proyecto:        {project}")
     click.echo(f"  objeto:          {object_type} (module_id={module_def.module_id})")
+    click.echo(f"  autorizacion SQL: concedida (fuente={auth.source}, {auth.granted_at.isoformat()})")
     click.echo(f"  modo:            {mode}")
     click.echo(f"  etapas:          {' -> '.join(definition.stages)}")
     click.echo(f"  execution_id:    {context.execution_id}")

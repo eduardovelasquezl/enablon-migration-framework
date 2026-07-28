@@ -18,6 +18,15 @@ o vía API, fuera de este repo, al menos por ahora.
 
 - **Nunca** se modifica el BAK ni se ejecuta INSERT/UPDATE/DELETE contra el SQL origen.
 - Todo acceso SQL es de solo lectura.
+- **El entorno de desarrollo puede disponer de conectividad SQL real** (usuario
+  readonly `ClaudeReadOnly`) — **la disponibilidad de credenciales NUNCA implica
+  autorización de uso**. Todo acceso SQL real (`python main.py run` / `export
+  drills`, en modo `sample` o `full`) requiere autorización técnica explícita
+  del usuario para esa ejecución concreta (`--allow-real-sql` /
+  `EMF_ALLOW_REAL_SQL=1`, bloqueado por defecto — ver
+  `docs/01-architecture/sql-execution-guard.md`). Nunca ejecutar un comando que
+  pueda tocar SQL real sin haber confirmado antes con el usuario que esa
+  ejecución concreta está autorizada, incluso si la CLI lo permitiría técnicamente.
 - Nunca se inventan reglas de negocio no documentadas — si algo no está claro
   (p. ej. qué hace `titlefix` exactamente), se marca como pendiente de confirmar,
   no se asume.
@@ -145,7 +154,7 @@ el propio cliente pidiendo la documentación de mapeo que este proyecto produce.
 
 | Necesidad | Estado |
 |---|---|
-| Acceso SQL de solo lectura | Concedido — pero este entorno de análisis no tiene conectividad de red directa a SQL Server; el flujo de trabajo real es: alguien ejecuta la query (las de `sql/source_queries/` u otras que propongamos) y sube el resultado. |
+| Acceso SQL de solo lectura | Concedido — corrección Sprint 8.6.1: este entorno de trabajo **sí puede** disponer de conectividad real a SQL Server (usuario readonly `ClaudeReadOnly`, ver `src/db/connection.py`) — un incidente contenido durante Sprint 8.6 lo confirmó (`python main.py run --object simulacros` abrió una conexión real y leyó 5 filas). **La disponibilidad de credenciales/conectividad NUNCA implica autorización de uso**: todo acceso SQL real requiere autorización técnica explícita, por ejecución, vía `--allow-real-sql` (o `EMF_ALLOW_REAL_SQL=1`) — bloqueado por defecto, para `sample` y `full` por igual, verificado por el SQL Execution Guard (`src/db/sql_execution_guard.py`, ver `docs/01-architecture/sql-execution-guard.md`). Sin esa autorización explícita del usuario para una ejecución concreta, no se ejecuta SQL real — el flujo de trabajo por defecto sigue siendo: alguien ejecuta la query (las de `sql/source_queries/` u otras que propongamos) y sube el resultado. |
 | Queries de extracción originales | Recibidas para los 9 módulos, en `sql/source_queries/`. Revisadas en profundidad solo Eventos hasta ahora (hallazgo del `FULL JOIN` que infla el "origen" — ver abajo). |
 | CSV reales de Enablon | Recibidos y contrastados para todos los módulos excepto PSM (recibido, no volumetrizado). |
 | Catálogo real de entidades | Recibido (`First_Axis`) y aplicado. |

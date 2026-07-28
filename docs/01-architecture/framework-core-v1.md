@@ -184,6 +184,17 @@ El único registro real que existe hoy es
 `core_adapters.py::register_drills_stages()` — cuatro líneas, auditables a
 simple vista.
 
+**Sprint 8.6 — Module Registry:** `StageRegistry` sigue registrando
+*etapas* de UN pipeline, sin cambios. La pregunta "¿qué `object_type`
+tiene un pipeline registrado?" (antes un `if object_type not in
+("drills",)` en `src/cli.py`) ahora la responde
+`src/core/module_registry.py::ModuleRegistry` — un registro distinto, a
+otro nivel (módulos completos, no etapas sueltas), que nunca posee un
+`StageRegistry` propio: cada `ModuleDefinition.pipeline_factory` recibe
+uno nuevo por ejecución y lo puebla. Ver
+`docs/01-architecture/module-registry.md` § 6 para la separación completa
+— no se repite aquí.
+
 ## 12. Gestión de errores
 
 Distinción aplicada consistentemente (Fase 8):
@@ -348,6 +359,13 @@ decidir, con evidencia real de ese segundo caso, si `canonicalize`
 necesita dejar de ser un simple envoltorio y empezar a producir
 `CanonicalField` reales — exactamente el criterio "No Abstraction Without
 a Real Consumer" ya aplicado en todo el resto de esta documentación EMF.
+
+**Actualizado en Sprint 8.6**: además de (1)-(4), un segundo módulo real
+añade ahora un quinto paso explícito: (5) declarar su `ModuleDefinition`
+(capacidades demostrables únicamente, ver `module-registry.md` § 8) y
+registrarla en `src/bootstrap/module_registry.py` -- el único lugar
+central que puede importar módulos funcionales para registrarlos.
+`src/core/` sigue sin cambiar.
 
 ## 21. Criterios de aceptación
 

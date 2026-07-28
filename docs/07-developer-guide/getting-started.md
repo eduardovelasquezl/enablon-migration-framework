@@ -66,7 +66,10 @@ para el procedimiento de recuperación tras el incidente de Sprint 6.
 | Query Engine v0.1 | `src/query/` | No — catálogo cerrado específico de Drills |
 | Prototype Export de Drills | `src/export/prototype/drills/` | No — SQL→CSV íntegramente específico de Drills |
 | Evidence Engine v0.1 | `src/evidence/` | No — limitado a Drills |
-| Core | `src/core/` | **No existe todavía** — Approved Design (Sprint 4.1) |
+| Core (Framework Core v1) | `src/core/` | Sí — orquestador/contratos genéricos, sin lógica de Drills |
+| Workspace Manifest | `src/core/workspace_manifest.py` | Sí — genérico, un único proyecto real declarado (`examples/workspace/`) |
+| Resource Resolver | `src/core/resource_resolver.py` | Sí — genérico, un único consumidor real (Drills) |
+| Module Registry | `src/core/module_registry.py` + `src/bootstrap/` | Sí — genérico, un único módulo real registrado (Drills, ver `module-registry.md`) |
 
 Si tu tarea es "añadir algo nuevo al framework", parte de este estado real,
 no de la arquitectura objetivo del Blueprint — la arquitectura objetivo

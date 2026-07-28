@@ -93,3 +93,12 @@ El `ObjectRegistry` diseñado en Sprint 4.1 es la única pieza de este modelo
 de extensibilidad con diseño de código ya aprobado (no implementado). Todo
 lo demás en este documento es arquitectura conceptual, a diseñar con su
 propia ADR cuando corresponda (principio 10).
+
+**Actualizado en Sprint 8.6**: `src/core/module_registry.py::ModuleRegistry`
+implementa, en la práctica, esta pieza -- con el vocabulario `module_id`
+(no `object_id`) ya en uso desde `WorkspaceManifest` (Sprint 8.4). Sigue
+vigente el principio 8 de § 5: sin descubrimiento dinámico de plugins, un
+único módulo real (Drills) registrado explícitamente en
+`src/bootstrap/module_registry.py` -- no se generaliza la carga hasta que
+exista un segundo módulo real. Ver
+`docs/01-architecture/module-registry.md`.

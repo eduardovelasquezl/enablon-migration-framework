@@ -327,6 +327,15 @@ python main.py workspace resolve --manifest examples/workspace/workspace.example
   Contract) sigue sin confirmar (ver § 15) -- no resuelta por este
   sprint, igual que en `project-contract-model.md` § 4.
 
+## 19.1 Sprint 8.6 — Module Registry
+
+`ResourceResolver` sigue sin cambios. `ModuleDefinition.required_artifact_types`/
+`optional_artifact_types` (`src/core/module_registry.py`) declaran QUÉ
+`ARTIFACT_KINDS` necesita un módulo (mismo vocabulario cerrado que este
+documento, reutilizado, nunca duplicado) -- pero no los resuelven: seguir
+resolviéndolos de verdad sigue siendo trabajo exclusivo de
+`ResourceResolver`. Ver `docs/01-architecture/module-registry.md` § 5.
+
 ## 20. Criterios de aceptación
 
 Ver `reports/executions/2026-07-28/Informe-Resource-Resolver-EMF.md` § 14

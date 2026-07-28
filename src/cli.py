@@ -16,17 +16,14 @@ import click
 from src.config import PROJECT_ROOT
 from src.core.contracts import ExecutionRequest
 from src.core.exceptions import CoreError
+from src.core.module_registry import ModuleCapability, ModuleRegistryError
 from src.core.orchestrator import PipelineOrchestrator
 from src.core.registry import StageRegistry
+from src.bootstrap.module_registry import build_default_module_registry
 from src.db.exceptions import DatabaseError
 from src.evidence.collector import resolve_run_dir, load_run
 from src.evidence.models import EvidenceSourceError
 from src.evidence.workbook import build_workbook, save_workbook
-from src.export.prototype.drills.core_adapters import (
-    build_drills_pipeline_definition,
-    build_execution_context,
-    register_drills_stages,
-)
 from src.export.prototype.drills.extractor import MODE_FULL, MODE_SAMPLE
 from src.export.prototype.drills.pipeline import run as run_drills_export
 from src.query.catalog import DRILLS_FILTER_CATALOG
@@ -256,14 +253,14 @@ def evidence_drills(run_ref: str | None, audience: str) -> None:
         click.echo(f"evidencia:          {path}")
 
 
-_CORE_SUPPORTED_OBJECT_TYPES = ("drills",)
-
-
 @cli.command("run")
 @click.option("--project", required=True, help="Nombre del proyecto (p. ej. 'moeve').")
 @click.option(
     "--object", "object_type", required=True,
-    help=f"Objeto migrable a ejecutar a través del Framework Core (hoy: {_CORE_SUPPORTED_OBJECT_TYPES}).",
+    help=(
+        "Objeto migrable a ejecutar a través del Framework Core -- module_id o alias "
+        "registrado en el ModuleRegistry (ver 'python main.py modules list')."
+    ),
 )
 @click.option("--module", "module_", default=None, help="Módulo del objeto (p. ej. 'simulacros').")
 @click.option(
@@ -300,21 +297,24 @@ def run_pipeline(
     (Execution Pipeline genérico, Fase 6 del roadmap EMF -- ver
     docs/01-architecture/framework-core-v1.md).
 
-    Hoy solo 'drills' está registrado como consumidor del Core. El comando
+    La selección del módulo pasa por `ModuleRegistry` (Sprint 8.6, ver
+    docs/01-architecture/module-registry.md) -- ningún condicional
+    específico de Drills vive ya en este comando. El comando
     'export drills' sigue siendo el camino existente sin cambios -- este
     comando es una entrada NUEVA que demuestra la integración genérica,
     no un reemplazo.
     """
-    if object_type not in _CORE_SUPPORTED_OBJECT_TYPES:
-        click.echo(
-            f"ERROR: objeto no soportado todavía por el Framework Core: {object_type!r} "
-            f"(disponibles: {_CORE_SUPPORTED_OBJECT_TYPES}).", err=True,
-        )
+    module_registry = build_default_module_registry()
+    try:
+        module_def = module_registry.ensure_capability(object_type, ModuleCapability.EXPORT)
+        module_registry.ensure_capability(module_def.module_id, mode)
+    except ModuleRegistryError as exc:
+        click.echo(f"ERROR de módulo ({type(exc).__name__}): {exc}", err=True)
         sys.exit(1)
 
     try:
         request = ExecutionRequest(
-            project=project, object_type=object_type, module=module_, mode=mode, limit=limit,
+            project=project, object_type=module_def.module_id, module=module_, mode=mode, limit=limit,
             output_dir=output_dir, confirm_full_export=confirm_full_export,
             generate_evidence=generate_evidence, evidence_audience=audience, filters=tuple(filters),
         )
@@ -322,15 +322,18 @@ def run_pipeline(
         click.echo(f"ERROR de configuración: {exc}", err=True)
         sys.exit(1)
 
-    registry = StageRegistry()
-    register_drills_stages(registry)
-    definition = build_drills_pipeline_definition()
-    context = build_execution_context(request)
-    orchestrator = PipelineOrchestrator(registry)
+    stage_registry = StageRegistry()
+    try:
+        pipeline_factory = module_registry.get_pipeline_factory(module_def.module_id)
+    except ModuleRegistryError as exc:
+        click.echo(f"ERROR de módulo ({type(exc).__name__}): {exc}", err=True)
+        sys.exit(1)
+    definition, context = pipeline_factory(request, stage_registry)
+    orchestrator = PipelineOrchestrator(stage_registry)
 
     click.echo("=== Framework Core v1 -- Execution Pipeline ===")
     click.echo(f"  proyecto:        {project}")
-    click.echo(f"  objeto:          {object_type}")
+    click.echo(f"  objeto:          {object_type} (module_id={module_def.module_id})")
     click.echo(f"  modo:            {mode}")
     click.echo(f"  etapas:          {' -> '.join(definition.stages)}")
     click.echo(f"  execution_id:    {context.execution_id}")
@@ -486,6 +489,59 @@ def workspace_resolve(
 
     if require_exists and not resolved.exists:
         sys.exit(1)
+
+
+@cli.group()
+def modules() -> None:
+    """Inspección del Module Registry (Sprint 8.6). Solo lectura -- nunca
+    ejecuta un pipeline, nunca accede a SQL Server, nunca modifica nada."""
+
+
+@modules.command("list")
+def modules_list() -> None:
+    """Lista, en orden determinista, todos los módulos que el software
+    sabe ejecutar (registrados en el ModuleRegistry) -- no confundir con
+    los módulos declarados en un Workspace Manifest de un proyecto
+    concreto (`workspace validate` cubre eso)."""
+    registry = build_default_module_registry()
+    click.echo("=== Module Registry -- list ===")
+    click.echo("")
+    for module_id in registry.list_modules():
+        definition = registry.get(module_id)
+        click.echo(
+            f"  {definition.module_id:<20} status={definition.status:<12} "
+            f"version={definition.version:<8} {definition.display_name}"
+        )
+    click.echo("")
+    click.echo(f"Total: {len(registry.list_modules())} (ejecutables: {len(registry.list_executable())})")
+
+
+@modules.command("show")
+@click.argument("module_id_or_alias")
+def modules_show(module_id_or_alias: str) -> None:
+    """Muestra la definición completa de un módulo -- nunca rutas físicas
+    ni credenciales, solo metadatos declarativos del ModuleRegistry."""
+    registry = build_default_module_registry()
+    try:
+        definition = registry.get(module_id_or_alias)
+    except ModuleRegistryError as exc:
+        click.echo(f"ERROR de módulo ({type(exc).__name__}): {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"=== Module Registry -- show {definition.module_id} ===")
+    click.echo("")
+    click.echo(f"module_id:        {definition.module_id}")
+    click.echo(f"canonical_name:   {definition.canonical_name or '(ninguno)'}")
+    click.echo(f"display_name:     {definition.display_name}")
+    click.echo(f"version:          {definition.version}")
+    click.echo(f"status:           {definition.status}")
+    click.echo(f"aliases:          {', '.join(sorted(definition.aliases)) or '(ninguno)'}")
+    click.echo(f"supported_modes:  {', '.join(sorted(definition.supported_modes)) or '(ninguno)'}")
+    click.echo(f"capabilities:     {', '.join(sorted(definition.capabilities.values)) or '(ninguna)'}")
+    click.echo(f"required_artifact_types: {', '.join(sorted(definition.required_artifact_types)) or '(ninguno)'}")
+    click.echo(f"optional_artifact_types: {', '.join(sorted(definition.optional_artifact_types)) or '(ninguno)'}")
+    if definition.description:
+        click.echo(f"description:      {definition.description}")
 
 
 if __name__ == "__main__":

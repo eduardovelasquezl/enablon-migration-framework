@@ -1,0 +1,274 @@
+===================================================
+INFORME DE EJECUCION -- SPRINT 8.6: MODULE REGISTRY
+===================================================
+
+Fecha: 2026-07-28  Rama: feature/drills-filtered-exports  Remoto: origin -> enablon-migration-framework
+
+================================================================
+1. Resumen ejecutivo
+================================================================
+
+Se implemento ModuleRegistry (src/core/module_registry.py): un registro explicito de modulos migrables ejecutables, con ModuleDefinition/ModuleCapabilities tipados, vocabulario cerrado de capacidades y de estado de implementacion, y errores tipados. Un composition root nuevo (src/bootstrap/module_registry.py) registra Drills como unico modulo ejecutable hoy, con el alias "simulacros" (verificado contra config/exports/drills.yaml) y explicitamente SIN el alias "SM" (verificado y descartado -- es Safety Meetings en CLAUDE.md, un modulo distinto). El comando CLI generico "python main.py run" ya no contiene ningun condicional propio de Drills ni imports directos de su core_adapters.py -- resuelve el modulo a traves del registro. Se anadieron los comandos de inspeccion "modules list"/"modules show". La suite paso de 557 a 612 casos en verde (+55), 7 skipped sin cambios. No se hizo ningun commit.
+
+================================================================
+2. Estado inicial
+================================================================
+
+  * Rama y remoto correctos. git diff --check: sin errores.
+  * Unico cambio automatico: .claude/settings.local.json -- restaurado con git restore.
+  * Suite completa antes de empezar: 557 passed, 7 skipped -- confirma la referencia del encargo.
+  * Sprints 8.4 y 8.5 confirmados sin commit, no tocados salvo extension puntual de archivos ya compartidos.
+  * INCIDENTE (Fase 10, verificacion manual de CLI): se invoco "python main.py run --project moeve --object simulacros --mode sample ..." directamente en shell, SIN el mock de run_query que si usa la suite de tests -- este entorno SI tiene conectividad real a SQL Server, y la ejecucion extrajo 5 filas reales, generando reports/20260728T083255Z/ con datos reales. Detectado de inmediato, comunicado explicitamente al usuario, y el directorio (nunca anadido a git) se borro con rm -rf antes de continuar. A partir de ese punto, toda verificacion de CLI se hizo exclusivamente via --help, CliRunner con run_query mockeado, o py_compile.
+
+================================================================
+3. Inventario de seleccion de modulos (Fase 1)
+================================================================
+
+  * src/cli.py::run_pipeline :: _CORE_SUPPORTED_OBJECT_TYPES = ("drills",) + if object_type not in (...) -- tupla hardcoded -- riesgo ALTO -- MIGRADO.
+  * src/cli.py (imports) :: import directo e incondicional de core_adapters de Drills en la ruta generica run -- riesgo ALTO -- MIGRADO.
+  * src/export/prototype/drills/core_adapters.py::register_drills_stages -- ya explicito, correcto -- reutilizado tal cual desde la nueva pipeline_factory.
+  * src/export/prototype/drills/core_adapters.py::OBJECT_TYPE -- constante "drills" -- reutilizada como module_id, no duplicada.
+  * config/modules.yaml (clave simulacros) / config/exports/drills.yaml (module: simulacros) -- evidencia directa del alias, no codigo ejecutable -- no aplica, fuente de verificacion.
+  * src/export/prototype/drills/pipeline.py::run -- invocacion directa desde "export drills" (legacy) -- mantener por compatibilidad (ModuleCapability.LEGACY_CLI).
+  * src/core/registry.py::StageRegistry -- registro de etapas, no de modulos -- no aplica, capa distinta, no se duplica.
+  * examples/workspace/workspace.example.yaml -- 8 modulos declarados -- no aplica a ModuleRegistry, responsabilidad de WorkspaceManifest.
+
+Ningun otro "if module =="/"if object_type ==" se encontro en el resto de src/ (grep exhaustivo).
+
+================================================================
+4. Arquitectura
+================================================================
+
+WorkspaceManifest -> declara recursos del proyecto
+ResourceResolver  -> resuelve recursos declarados
+ModuleRegistry    -> resuelve la implementacion ejecutable del modulo
+PipelineOrchestrator -> ejecuta el pipeline registrado
+
+ModuleRegistry no importa Drills ni src.export/src.etl/src.evidence (verificado por test arquitectonico). El unico lugar que si los importa es el composition root, src/bootstrap/module_registry.py.
+
+================================================================
+5. Modelo Python
+================================================================
+
+ModuleDefinition (frozen dataclass): module_id, display_name, version, status, capabilities, canonical_name, aliases, pipeline_factory, supported_modes, required_artifact_types, optional_artifact_types, description, metadata.
+ModuleCapabilities: envuelve un frozenset[str] validado contra ModuleCapability.ALL; expone supports().
+ModuleRegistry: register, get, contains, list_modules, list_executable, capabilities, supports, ensure_capability, get_pipeline_factory.
+ensure_module_runnable(): funcion libre que compone ModuleRegistry + WorkspaceManifest (Fase 11).
+
+================================================================
+6. Capabilities
+================================================================
+
+Vocabulario cerrado (ModuleCapability, 11 valores): export, sample, full, evidence, comparison, validation, manifest_driven_resources, legacy_cli, canonicalization, mapping, import. Drills declara 9 de 11 -- NO canonicalization (seam pass-through documentado, no transformacion real) ni import (el repositorio no ejecuta cargas contra Enablon). Ningun modulo registrado declara import hoy (verificado por test).
+
+================================================================
+7. Status
+================================================================
+
+Dos vocabularios ortogonales: ModuleImplementationStatus (software: implemented/experimental/planned/deprecated) vs ModuleStatus de workspace_manifest.py (proyecto: planned/ready/blocked/in_progress/validated/deprecated). Drills = experimental en software (prototype_status: review_only) frente a in_progress en el ejemplo de proyecto -- valores distintos, a proposito.
+
+================================================================
+8. Registry
+================================================================
+
+module_id unico; alias unicos globalmente (contra otros alias Y contra cualquier module_id, en ambas direcciones); canonical_name unico cuando se declara; ningun duplicado se sobrescribe salvo overwrite=True explicito; deprecated resoluble con logger.warning(); listado alfabetico, determinista.
+
+================================================================
+9. Composition root
+================================================================
+
+src/bootstrap/module_registry.py -- unico fichero que importa src.export.prototype.drills.core_adapters para construir el ModuleDefinition de Drills y registrarlo. build_default_module_registry() es el unico punto de entrada.
+
+================================================================
+10. Drills
+================================================================
+
+module_id="drills", canonical_name="Drills", version="0.1.0", status=experimental, aliases={"simulacros"} (SIN "SM" -- verificado explicitamente contra CLAUDE.md antes de descartarlo), supported_modes={"sample","full"}, required_artifact_types={"sql","mapping"}, optional_artifact_types={"operational_csv","etl","errors"}. pipeline_factory adapta exactamente el flujo que antes vivia inline en src/cli.py::run_pipeline.
+
+================================================================
+11. CLI
+================================================================
+
+run ahora: build_default_module_registry() -> ensure_capability(object,"export") -> ensure_capability(module_id,mode) -> get_pipeline_factory(module_id) -> pipeline_factory(request, StageRegistry()) -> PipelineOrchestrator.run(). --object acepta module_id o alias (drills o simulacros). export drills (legacy) sin cambios. Nuevos: modules list, modules show <module_id_or_alias> -- nunca imprimen rutas fisicas ni credenciales.
+
+================================================================
+12. Integracion con Manifest
+================================================================
+
+ensure_module_runnable(registry, module_id, manifest=..., capability=...) implementa el orden de la Fase 11: (1) ModuleRegistry.get() -> UnknownModuleError; (2) manifest.get_module() (reutiliza WorkspaceManifestError tal cual); (3) enabled=False -> ModuleDisabledForProjectError; (4) ensure_capability() -> UnsupportedCapabilityError. Implementada y testeada, NO conectada todavia a ningun comando CLI real -- deuda tecnica explicita (§ 20).
+
+================================================================
+13. Integracion con Resolver
+================================================================
+
+Sin integracion directa de codigo: required_artifact_types/optional_artifact_types usan el mismo vocabulario cerrado (ARTIFACT_KINDS) que ResourceResolver/WorkspaceManifest, reutilizado, nunca duplicado -- pero ModuleRegistry no resuelve rutas por si mismo.
+
+================================================================
+14. Tests
+================================================================
+
+Nuevos:
+  * tests/test_module_registry.py -- 36 tests.
+  * tests/test_bootstrap_module_registry.py -- 11 tests (incluye prueba arquitectonica de no-import de Drills en Core).
+  * tests/test_cli_modules.py -- 8 tests.
+
+Modificado: tests/test_drills_core_pipeline.py -- 1 test adaptado (mensaje de error cambiado a UnknownModuleError, mismo exit code).
+
+================================================================
+15. Resultados
+================================================================
+
+557 passed, 7 skipped  (referencia inicial, confirmada al empezar)
+612 passed, 7 skipped  (al terminar -- +55, 0 nuevos skipped, 0 fallos)
+
+py_compile sin errores. CLI verificada con --help y CliRunner (SQL mockeado). Ningun acceso real a SQL Server tras el incidente de § 2.
+
+================================================================
+16. Compatibilidad
+================================================================
+
+"export drills" sin cambios. "run --object drills" mismo comportamiento observable; "run --object simulacros" ahora tambien funciona. "run --object <no-registrado>" sigue exit code distinto de 0, mensaje mas especifico. workspace validate/resolve sin cambios.
+
+================================================================
+17. Archivos creados
+================================================================
+
+  * src/core/module_registry.py
+  * src/bootstrap/__init__.py
+  * src/bootstrap/module_registry.py
+  * docs/01-architecture/module-registry.md
+  * tests/test_module_registry.py
+  * tests/test_bootstrap_module_registry.py
+  * tests/test_cli_modules.py
+  * reports/executions/2026-07-28/Informe-Module-Registry-EMF.md (+ .txt)
+
+================================================================
+18. Archivos modificados
+================================================================
+
+  * src/cli.py (imports de Drills retirados de run_pipeline; comando modules anadido)
+  * tests/test_drills_core_pipeline.py (1 test adaptado)
+  * docs/01-architecture/framework-core-v1.md (§ 11, § 20 -- punteros)
+  * docs/01-architecture/workspace-manifest.md (§ 5, § 6 -- correccion de contenido desactualizado)
+  * docs/01-architecture/resource-resolver.md (§ 19.1 -- puntero)
+  * docs/01-architecture/extensibility-model.md (§ 6 -- puntero)
+  * docs/07-developer-guide/getting-started.md (tabla § 4 corregida)
+
+No se modificaron pipeline.py ni test_drills_data_workspace_integration.py en este sprint (son cambios de Sprint 8.5, ya informados).
+
+================================================================
+19. Riesgos
+================================================================
+
+Mensaje de error de "run --object <no soportado>" cambio de texto (no de exit code) -- ningun script del repo dependia del texto anterior (verificado). ensure_module_runnable() sin consumidor CLI real todavia -- mismo perfil de riesgo que ya existia (run tampoco validaba manifest antes).
+
+================================================================
+20. Deuda tecnica
+================================================================
+
+  * ensure_module_runnable() implementada y testeada, sin consumidor CLI real.
+  * PipelineFactory no recibe WorkspaceManifest/ResourceResolver -- extension aditiva pendiente.
+  * version="0.1.0" de Drills, sin politica de versionado de modulos mas amplia.
+  * El incidente de § 2 revela que este entorno SI tiene conectividad real a SQL Server (contradice CLAUDE.md) -- recomendado confirmar con el usuario.
+
+================================================================
+21. Propuesta de commits (NO ejecutados -- requieren aprobacion explicita)
+================================================================
+
+Tres sprints (8.4, 8.5, 8.6) siguen sin commit. Se recomienda mantener commits separados por sprint, en este orden:
+
+Commit 1 -- Sprint 8.4 (Workspace Manifest): sin cambios respecto a lo ya propuesto en Informe-Workspace-Manifest-EMF.md (2026-07-27).
+
+Commit 2 -- Sprint 8.5 (Resource Resolver): sin cambios respecto a Informe-Resource-Resolver-EMF.md (2026-07-28), salvo incluir tambien las correcciones de § 5/§ 6 de workspace-manifest.md hechas en Sprint 8.6 (ver nota abajo).
+
+Commit 3 -- Sprint 8.6 (Module Registry), este incremento, mensaje sugerido:
+
+  feat(core): add explicit ModuleRegistry over the Framework Core
+
+  Adds ModuleRegistry/ModuleDefinition/ModuleCapabilities
+  (src/core/module_registry.py) with typed errors and a closed
+  capability vocabulary. Adds the composition root
+  (src/bootstrap/module_registry.py) that registers Drills as the sole
+  executable module, with a verified "simulacros" alias (and explicitly
+  not "SM", which is Safety Meetings). Removes the hardcoded object_type
+  check and direct Drills imports from the generic `run` CLI command in
+  favor of ModuleRegistry lookups. Adds `modules list`/`modules show`
+  inspection commands.
+
+Archivos: src/core/module_registry.py, src/bootstrap/, src/cli.py (hunks de modules/run_pipeline), tests/test_module_registry.py, tests/test_bootstrap_module_registry.py, tests/test_cli_modules.py, tests/test_drills_core_pipeline.py, docs/01-architecture/module-registry.md, docs/01-architecture/framework-core-v1.md, docs/01-architecture/extensibility-model.md, docs/07-developer-guide/getting-started.md, reports/executions/2026-07-28/Informe-Module-Registry-EMF.md (+.txt).
+
+NOTA DE SOLAPE: docs/01-architecture/workspace-manifest.md § 5/§ 6 se corrigieron en este sprint porque describian un Module Registry/Resource Resolver inexistentes -- se recomienda incluir ESE hunk concreto en el commit de Sprint 8.6 (git add -p), no en el de Sprint 8.4.
+
+Excluir de cualquier commit: .claude/settings.local.json.
+
+================================================================
+22. git diff --check
+================================================================
+
+Sin errores de espacio en blanco (exit code 0) -- solo warnings de conversion LF->CRLF de Git en Windows.
+
+================================================================
+23. git status --short (al terminar este informe)
+================================================================
+
+ M .claude/settings.local.json
+ M config/data_workspace.yaml
+ M docs/01-architecture/extensibility-model.md
+ M docs/01-architecture/external-data-workspace.md
+ M docs/01-architecture/framework-core-v1.md
+ M docs/07-developer-guide/getting-started.md
+ M src/cli.py
+ M src/export/prototype/drills/pipeline.py
+ M tests/test_drills_core_pipeline.py
+ M tests/test_drills_data_workspace_integration.py
+?? docs/01-architecture/drills-csv-contract.md
+?? docs/01-architecture/knowledge-coverage-matrix.md
+?? docs/01-architecture/knowledge-traceability-matrix.md
+?? docs/01-architecture/module-registry.md
+?? docs/01-architecture/project-contract-model.md
+?? docs/01-architecture/resource-resolver.md
+?? docs/01-architecture/workspace-manifest.md
+?? docs/01-architecture/workspace-naming-convention.md
+?? docs/01-architecture/workspace-validation-checklist.md
+?? docs/07-developer-guide/drills-real-data-inventory.md
+?? examples/
+?? reports/executions/2026-07-27/...
+?? reports/executions/2026-07-28/
+?? src/bootstrap/
+?? src/core/module_registry.py
+?? src/core/resource_resolver.py
+?? src/core/workspace_manifest.py
+?? tests/test_bootstrap_module_registry.py
+?? tests/test_cli_modules.py
+?? tests/test_cli_workspace_resolve.py
+?? tests/test_cli_workspace_validate.py
+?? tests/test_module_registry.py
+?? tests/test_resource_resolver.py
+?? tests/test_workspace_manifest.py
+
+(pipeline.py y test_drills_data_workspace_integration.py son cambios de Sprint 8.5, ya informados; config/data_workspace.yaml y varios docs/examples son de Sprint 8.4.)
+
+================================================================
+24. git diff --stat (archivos tocados por Sprint 8.6)
+================================================================
+
+  src/core/module_registry.py                  nuevo (~370 lineas)
+  src/bootstrap/__init__.py                     nuevo
+  src/bootstrap/module_registry.py              nuevo (~100 lineas)
+  src/cli.py                                    +~85 -~15
+  tests/test_module_registry.py                 nuevo (~290 lineas)
+  tests/test_bootstrap_module_registry.py       nuevo (~155 lineas)
+  tests/test_cli_modules.py                     nuevo (~80 lineas)
+  tests/test_drills_core_pipeline.py            +~4 -~2
+  docs/01-architecture/module-registry.md       nuevo (~250 lineas)
+  docs/01-architecture/framework-core-v1.md     +~18
+  docs/01-architecture/workspace-manifest.md    +~15 -~15 (correccion)
+  docs/01-architecture/resource-resolver.md     +~8
+  docs/01-architecture/extensibility-model.md   +~9
+  docs/07-developer-guide/getting-started.md    +~4 -~1
+
+================================================================
+25. Recomendacion del siguiente paso
+================================================================
+
+Sprint 8.6 completo segun los criterios de aceptacion del encargo. Siguientes pasos recomendados: (a) confirmar con el usuario si este entorno debe seguir teniendo conectividad real a SQL Server (contradice CLAUDE.md) y actualizar esa nota si es intencional; (b) considerar conectar ensure_module_runnable() a run con un --manifest opcional cuando exista un caso de uso real; (c) proceder con los tres commits propuestos en § 21, en orden, tras revision del usuario.

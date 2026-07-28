@@ -236,10 +236,14 @@ def test_ejecutar_via_cli_generico_sin_sql_real(tmp_path):
 
 
 def test_cli_run_rechaza_objeto_no_soportado(tmp_path):
+    """Sprint 8.6: la selección de módulo pasa por ModuleRegistry -- un
+    object_type no registrado produce UnknownModuleError, no un
+    condicional propio de la CLI (ver docs/01-architecture/module-registry.md)."""
     from src.cli import cli
 
     runner = CliRunner()
     result = runner.invoke(cli, ["run", "--project", "moeve", "--object", "eventos", "--output-dir", str(tmp_path)])
 
     assert result.exit_code != 0
-    assert "no soportado" in result.output
+    assert "UnknownModuleError" in result.output
+    assert "eventos" in result.output

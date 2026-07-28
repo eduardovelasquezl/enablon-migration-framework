@@ -37,6 +37,12 @@ from src.core.workspace_manifest import (
     WorkspaceManifestLoader,
     validate_manifest,
 )
+from src.core.data_workspace import get_default_data_workspace
+from src.core.resource_resolver import (
+    ResourceRequest,
+    ResourceResolutionError,
+    ResourceResolver,
+)
 
 _ALLOWED_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 _AUDIENCES = ("internal", "client", "both")
@@ -402,6 +408,84 @@ def workspace_validate(manifest_path: str) -> None:
         sys.exit(1)
 
     click.echo("Resultado: OK -- sin violaciones.")
+
+
+@workspace.command("resolve")
+@click.option(
+    "--manifest", "manifest_path", type=str, required=True,
+    help="Ruta al fichero workspace.yaml (p. ej. examples/workspace/workspace.example.yaml).",
+)
+@click.option("--module", "module_id", type=str, required=True, help="module_id declarado en el manifest.")
+@click.option(
+    "--artifact", "artifact_type", type=str, required=True,
+    help="Kind de artefacto a resolver (p. ej. operational_csv, template_csv, sql, mapping...).",
+)
+@click.option(
+    "--require-exists", is_flag=True, default=False,
+    help="Exige que el recurso exista físicamente -- si no, exit code distinto de 0.",
+)
+@click.option(
+    "--allow-deprecated", is_flag=True, default=False,
+    help="Permite resolver un artefacto marcado status=deprecated en el manifest.",
+)
+def workspace_resolve(
+    manifest_path: str, module_id: str, artifact_type: str,
+    require_exists: bool, allow_deprecated: bool,
+) -> None:
+    """Resuelve un único artefacto de un módulo contra el manifest y el
+    workspace externo de datos real (`EMF_DATA_ROOT`) usando
+    `ResourceResolver` (Sprint 8.5).
+
+    Nunca abre el archivo resuelto, nunca modifica nada. Exit code 0 si
+    el recurso se resuelve según lo pedido; distinto de 0 si el manifest
+    no lo declara, está en un estado no resoluble, o (con
+    --require-exists) no existe físicamente.
+    """
+    path = Path(manifest_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+
+    click.echo("=== Workspace Manifest -- resolve ===")
+    click.echo(f"  manifest: {path}")
+    click.echo(f"  módulo:   {module_id}")
+    click.echo(f"  artefacto:{artifact_type}")
+    click.echo("")
+
+    try:
+        manifest = WorkspaceManifestLoader.load_from_path(path)
+    except WorkspaceManifestError as exc:
+        click.echo(f"ERROR de esquema: {exc}", err=True)
+        sys.exit(1)
+
+    resolver = ResourceResolver(manifest, get_default_data_workspace())
+    request = ResourceRequest(
+        module_id=module_id, artifact_type=artifact_type,
+        required=require_exists, require_physical_file=require_exists,
+        allow_deprecated=allow_deprecated,
+    )
+
+    try:
+        resolved = resolver.resolve(request)
+    except ResourceResolutionError as exc:
+        click.echo(f"ERROR de resolución ({type(exc).__name__}): {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"manifest_ref:    {resolved.manifest_ref}")
+    click.echo(f"status:          {resolved.artifact_status}")
+    click.echo(f"contract_role:   {resolved.contract_role or '(ninguno)'}")
+    click.echo(f"declared_path:   {resolved.declared_path or '(no declarado)'}")
+    click.echo(f"resolved_path:   {resolved.resolved_path or '(no resoluble sin path declarado)'}")
+    click.echo(f"exists:          {resolved.exists if resolved.exists is not None else '(no comprobado)'}")
+    click.echo(f"generated:       {resolved.generated}")
+    if resolved.description:
+        click.echo(f"description:     {resolved.description}")
+    if resolved.warnings:
+        click.echo(f"warnings ({len(resolved.warnings)}):")
+        for warning in resolved.warnings:
+            click.echo(f"  - {warning}")
+
+    if require_exists and not resolved.exists:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

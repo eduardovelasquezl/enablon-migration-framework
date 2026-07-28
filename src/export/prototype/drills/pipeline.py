@@ -23,7 +23,13 @@ from typing import Sequence
 import pandas as pd
 
 from src.config import PROJECT_ROOT
-from src.core.data_workspace import DataWorkspaceError, get_default_data_workspace
+from src.core.data_workspace import get_default_data_workspace
+from src.core.resource_resolver import (
+    ResourceRequest,
+    ResourceResolutionError,
+    ResourceResolver,
+)
+from src.core.workspace_manifest import WorkspaceManifestLoader
 from src.query.models import CompiledFilter
 from src.query.sql_builder import render_generated_sql_file
 
@@ -67,40 +73,95 @@ OUTPUT_COLUMNS = [
 ]
 
 
-# Sprint 7 (Workspace Separation): el CSV histórico de comparación ya NO
-# vive dentro del repositorio -- se resuelve, si existe, desde el
-# workspace externo de datos (EMF_DATA_ROOT, ver
-# docs/01-architecture/external-data-workspace.md). La ruta
-# "inputs/_incoming_claude_web/..." que vivía aquí antes de este
-# incremento ya no existe (ver
-# docs/07-developer-guide/local-data-recovery-checklist.md § 0) y, aunque
-# existiera, nunca debería resolverse de nuevo dentro del repositorio --
-# ver `_resolve_historical_csv_path` más abajo.
-HISTORICAL_CSV_PROJECT = "moeve"
-HISTORICAL_CSV_CATEGORY = "csv_enablon"
-HISTORICAL_CSV_RELATIVE_PATH = "Drills-22072026-41.csv"
+# Sprint 8.5 (Resource Resolver): el CSV de comparación de Drills se
+# resuelve ahora a través del ResourceResolver genérico (ver
+# docs/01-architecture/resource-resolver.md), pidiendo explícitamente el
+# artefacto `operational_csv` -- el Project Contract, no el Platform
+# Contract (ver docs/01-architecture/project-contract-model.md § 2.2: "El
+# Project Contract es la referencia principal para validar el EMF"). Ya
+# no existe un `workspace.yaml` real para este proyecto (ver
+# docs/01-architecture/resource-resolver.md § "Integración con Drills"),
+# así que este pipeline construye en código el fragmento mínimo de
+# manifest que necesita para su propio módulo -- nunca importa ni asume
+# como real `examples/workspace/workspace.example.yaml` (que es solo una
+# plantilla de ejemplo). Esto es deliberadamente transitorio: en cuanto
+# exista un `workspace.yaml` real del proyecto, este fragmento en código
+# debe sustituirse por `WorkspaceManifestLoader.load_from_path(...)`
+# apuntando a él (ver deuda técnica del informe de Sprint 8.5).
+#
+# La ruta legada "inputs/_incoming_claude_web/..." (retirada en Sprint 7)
+# y la categoría deprecated `csv_enablon` (retirada en este incremento) no
+# se referencian en absoluto -- ver `_build_drills_comparison_manifest` y
+# `_resolve_comparison_csv_path` más abajo. Nunca se cae de vuelta a leer
+# un dato real dentro de `inputs/` (Sprint 7, § "no fallback silencioso").
+_COMPARISON_PROJECT_ID = "moeve"
+_COMPARISON_MODULE_ID = "drills"
+_COMPARISON_ARTIFACT_TYPE = "operational_csv"
+_COMPARISON_CANONICAL_NAME = "Drills"
 
 
-def _resolve_historical_csv_path() -> Path | None:
-    """Intenta resolver el CSV histórico de comparación desde el
-    workspace externo de datos. La comparación es y sigue siendo
-    OPCIONAL (comportamiento sin cambios respecto a antes de este
-    incremento): si `EMF_DATA_ROOT` no está declarado, o el fichero no
-    está presente en el workspace, se devuelve `None` y
-    `comparison_report.yaml` simplemente no se genera -- nunca se cae de
-    vuelta a leer un dato real dentro de `inputs/` (Sprint 7, § "no
-    fallback silencioso")."""
+def _build_drills_comparison_manifest():
+    """Manifest mínimo, construido en código, con el único artefacto que
+    este pipeline necesita resolver (`operational_csv` de `drills`).
+    Nunca lee ni referencia un `workspace.yaml` real -- ver nota Sprint
+    8.5 arriba. El nombre de fichero (`Drills.csv`) sigue la convención
+    de `CSV_Enablon_Operational/` (ver
+    docs/01-architecture/workspace-naming-convention.md § 4) -- no es el
+    nombre del CSV histórico conocido (`Drills-22072026-41.csv`, que seria
+    Platform Contract por convención de nombre, ver
+    docs/01-architecture/project-contract-model.md § 4): mientras no exista
+    un `Drills.csv` real en `CSV_Enablon_Operational/`, la comparación
+    simplemente no se genera (mismo comportamiento opcional de siempre)."""
+    return WorkspaceManifestLoader.load_from_dict({
+        "project": {
+            "id": _COMPARISON_PROJECT_ID, "display_name": "Moeve",
+            "status": "active", "version": "1.0",
+        },
+        "workspace": {"schema_version": "1.0", "project_root": f"projects/{_COMPARISON_PROJECT_ID}"},
+        "modules": {
+            _COMPARISON_MODULE_ID: {
+                "display_name": "Drills",
+                "enabled": True,
+                "status": "in_progress",
+                "canonical_name": _COMPARISON_CANONICAL_NAME,
+                "artifacts": {
+                    _COMPARISON_ARTIFACT_TYPE: {
+                        "path": f"{_COMPARISON_CANONICAL_NAME}.csv",
+                        "status": "missing",
+                        "contract_role": "project",
+                        "required_for_comparison": True,
+                        "description": (
+                            "CSV operativo (Project Contract) usado para la comparación "
+                            "opcional del export generado por el EMF."
+                        ),
+                    },
+                },
+            },
+        },
+    })
+
+
+def _resolve_comparison_csv_path() -> Path | None:
+    """Intenta resolver el CSV de comparación (Project Contract) de
+    Drills desde el workspace externo de datos vía `ResourceResolver`. La
+    comparación es y sigue siendo OPCIONAL (comportamiento sin cambios de
+    fondo respecto a antes de este incremento): si `EMF_DATA_ROOT` no está
+    declarado, o el fichero no está presente en el workspace, se devuelve
+    `None` y `comparison_report.yaml` simplemente no se genera."""
     try:
         workspace = get_default_data_workspace()
-        path = workspace.resolve(
-            project=HISTORICAL_CSV_PROJECT,
-            category=HISTORICAL_CSV_CATEGORY,
-            relative_path=HISTORICAL_CSV_RELATIVE_PATH,
+        manifest = _build_drills_comparison_manifest()
+        resolver = ResourceResolver(manifest, workspace)
+        resolved = resolver.resolve(ResourceRequest(
+            module_id=_COMPARISON_MODULE_ID,
+            artifact_type=_COMPARISON_ARTIFACT_TYPE,
             required=False,
-        )
-    except DataWorkspaceError:
+            require_physical_file=True,
+            purpose="comparison_report",
+        ))
+    except ResourceResolutionError:
         return None
-    return path if path.is_file() else None
+    return resolved.resolved_path if resolved.exists else None
 
 
 @dataclass
@@ -552,7 +613,7 @@ def run(
     write_export_manifest(manifest, manifest_path)
 
     comparison_report_path = None
-    historical_path = _resolve_historical_csv_path()
+    historical_path = _resolve_comparison_csv_path()
     if historical_path is not None:
         comparison_report = comparison_mod.build_comparison_report(
             historical_path=historical_path,

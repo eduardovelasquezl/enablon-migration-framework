@@ -425,11 +425,14 @@ autorización):
 - Añadir `csv_enablon_template`/`csv_enablon_operational` a
   `config/data_workspace.yaml` (sustituyendo o conviviendo con
   `csv_enablon`, decisión pendiente).
-- Decidir y actualizar, en `src/export/prototype/drills/pipeline.py`, si
+- ~~Decidir y actualizar, en `src/export/prototype/drills/pipeline.py`, si
   `HISTORICAL_CSV_CATEGORY` debe apuntar a `csv_enablon_template`, a
   `csv_enablon_operational`, o si Drills necesita seguir usando un
-  concepto propio distinto de ambos (pendiente de la clasificación de
-  `Drills-22072026-41.csv`, ver § 13).
+  concepto propio distinto de ambos~~ — resuelto en Sprint 8.5: la
+  constante se retiró; la comparación pide `operational_csv` vía
+  `ResourceResolver` (ver § 23). La clasificación de
+  `Drills-22072026-41.csv` en sí (§ 13) sigue sin confirmar — no es lo
+  mismo que decidir qué categoría consulta el código.
 - Diseñar (no implementar todavía tampoco, ver
   `project-contract-model.md` § "Futura validación automática") el motor
   de comparación de tres vías Template → Operational → EMF.
@@ -600,3 +603,18 @@ aditivas: `csv_enablon_template` y `csv_enablon_operational` (§ 21) — la
 categoría legacy `csv_enablon` se mantiene sin cambios para no romper el
 comportamiento actual de Drills (`pipeline.py::HISTORICAL_CSV_CATEGORY`
 sigue sin modificarse, ver § 22, todavía pendiente).
+
+## 23. Sprint 8.5 — Resource Resolver y retiro de `HISTORICAL_CSV_CATEGORY`
+
+El punto pendiente de § 22 ("Decidir y actualizar... si
+`HISTORICAL_CSV_CATEGORY` debe apuntar a `csv_enablon_template`, a
+`csv_enablon_operational`...") queda resuelto en Sprint 8.5:
+`pipeline.py` ya no tiene una constante `HISTORICAL_CSV_CATEGORY` —
+resuelve el CSV de comparación pidiendo explícitamente el artefacto
+`operational_csv` (Project Contract) a través del `ResourceResolver`
+genérico (`src/core/resource_resolver.py`). La categoría legacy
+`csv_enablon` deja de consultarse en código (sigue declarada en
+`config/data_workspace.yaml` únicamente por si hay que auditar qué había
+ahí, no se retira el YAML). Ver `docs/01-architecture/resource-resolver.md`
+§ 15 para el detalle completo y la nota abierta sobre la clasificación de
+`Drills-22072026-41.csv`.

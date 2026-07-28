@@ -1,6 +1,9 @@
 """Tests de integración LOCAL (sin SQL Server real, sin datos reales) de
-la resolución del CSV histórico de Drills contra el workspace externo de
-datos (Sprint 7 -- Workspace Separation, Fase 9).
+la resolución del CSV de comparación de Drills contra el workspace
+externo de datos, ahora vía `ResourceResolver` (Sprint 8.5, migrado desde
+la resolución directa por `DataWorkspace` de Sprint 7 -- ver
+docs/01-architecture/resource-resolver.md § "Migración de
+HISTORICAL_CSV_CATEGORY").
 
 Ninguna dependencia de `C:\\Users\\EduardoVelásquez`, de SQL Server, ni
 escritura sobre datos reales -- todo bajo `tmp_path` de pytest.
@@ -18,10 +21,9 @@ import pytest
 import src.export.prototype.drills.extractor as extractor_mod
 import src.export.prototype.drills.pipeline as pipeline_mod
 from src.export.prototype.drills.pipeline import (
-    HISTORICAL_CSV_CATEGORY,
-    HISTORICAL_CSV_PROJECT,
-    HISTORICAL_CSV_RELATIVE_PATH,
-    _resolve_historical_csv_path,
+    _COMPARISON_CANONICAL_NAME,
+    _COMPARISON_PROJECT_ID,
+    _resolve_comparison_csv_path,
 )
 
 
@@ -37,26 +39,29 @@ def _fake_dataframe() -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
-# _resolve_historical_csv_path -- sin romper compatibilidad
+# _resolve_comparison_csv_path -- sin romper compatibilidad de comportamiento
 # --------------------------------------------------------------------------
 
 def test_sin_emf_data_root_no_falla_devuelve_none(monkeypatch):
-    """Comportamiento sin cambios respecto a antes de Sprint 7: sin
+    """Comportamiento sin cambios respecto a antes de Sprint 8.5: sin
     EMF_DATA_ROOT declarado, la comparación es simplemente omitida --
     nunca un error, nunca un fallback a datos dentro del repositorio."""
     monkeypatch.delenv("EMF_DATA_ROOT", raising=False)
-    assert _resolve_historical_csv_path() is None
+    assert _resolve_comparison_csv_path() is None
 
 
 def test_con_emf_data_root_pero_sin_el_fichero_devuelve_none(tmp_path, monkeypatch):
     monkeypatch.setenv("EMF_DATA_ROOT", str(tmp_path))
-    assert _resolve_historical_csv_path() is None
+    assert _resolve_comparison_csv_path() is None
 
 
-def test_con_emf_data_root_y_el_fichero_presente_se_resuelve(tmp_path, monkeypatch):
-    category_dir = tmp_path / "projects" / HISTORICAL_CSV_PROJECT / "CSV_Enablon"
+def test_con_emf_data_root_y_el_fichero_operational_presente_se_resuelve(tmp_path, monkeypatch):
+    """El artefacto pedido es `operational_csv` (Project Contract) -- la
+    carpeta física es `CSV_Enablon_Operational/`, no la `CSV_Enablon/`
+    (deprecated) usada antes de este incremento."""
+    category_dir = tmp_path / "projects" / _COMPARISON_PROJECT_ID / "CSV_Enablon_Operational"
     category_dir.mkdir(parents=True)
-    historical_file = category_dir / HISTORICAL_CSV_RELATIVE_PATH
+    historical_file = category_dir / f"{_COMPARISON_CANONICAL_NAME}.csv"
     historical_file.write_text(
         "CS_Typology\tReference\tStartingDate\tCS_HistoricalOriginID\tCS_Letter\t"
         "CS_ImpactedEntities\tCS_WorkflowStatus\tCS_HistoricalDataOrigin\r\n",
@@ -64,20 +69,32 @@ def test_con_emf_data_root_y_el_fichero_presente_se_resuelve(tmp_path, monkeypat
     )
     monkeypatch.setenv("EMF_DATA_ROOT", str(tmp_path))
 
-    resolved = _resolve_historical_csv_path()
+    resolved = _resolve_comparison_csv_path()
     assert resolved == historical_file.resolve()
     assert resolved.is_file()
 
 
+def test_fichero_en_categoria_deprecated_csv_enablon_no_se_resuelve(tmp_path, monkeypatch):
+    """La categoría legada `csv_enablon` (Sprint 7) ya no se consulta --
+    un archivo colocado ahí no debe resolverse (ni siquiera por
+    accidente): confirma que no hay fallback oculto hacia la ruta vieja."""
+    category_dir = tmp_path / "projects" / _COMPARISON_PROJECT_ID / "CSV_Enablon"
+    category_dir.mkdir(parents=True)
+    (category_dir / "Drills-22072026-41.csv").write_text("x", encoding="utf-8")
+    monkeypatch.setenv("EMF_DATA_ROOT", str(tmp_path))
+    assert _resolve_comparison_csv_path() is None
+
+
 def test_nunca_cae_a_inputs_incoming_claude_web(monkeypatch):
     """La ruta legada (inputs/_incoming_claude_web/...) ya no existe en el
-    repositorio -- confirma que _resolve_historical_csv_path no la
-    referencia en absoluto (ver el propio código: solo usa DataWorkspace)."""
+    repositorio -- confirma que _resolve_comparison_csv_path no la
+    referencia en absoluto (ver el propio código: solo usa ResourceResolver)."""
     monkeypatch.delenv("EMF_DATA_ROOT", raising=False)
     import inspect
 
-    source = inspect.getsource(_resolve_historical_csv_path)
+    source = inspect.getsource(_resolve_comparison_csv_path)
     assert "_incoming_claude_web" not in source
+    assert "inputs/" not in source
 
 
 # --------------------------------------------------------------------------
@@ -100,9 +117,9 @@ def test_pipeline_sin_workspace_externo_no_genera_comparison_report(tmp_path, mo
 
 def test_pipeline_con_workspace_externo_genera_comparison_report(tmp_path, monkeypatch):
     data_root = tmp_path / "data_root"
-    category_dir = data_root / "projects" / HISTORICAL_CSV_PROJECT / "CSV_Enablon"
+    category_dir = data_root / "projects" / _COMPARISON_PROJECT_ID / "CSV_Enablon_Operational"
     category_dir.mkdir(parents=True)
-    historical_file = category_dir / HISTORICAL_CSV_RELATIVE_PATH
+    historical_file = category_dir / f"{_COMPARISON_CANONICAL_NAME}.csv"
     # CSV histórico mínimo, con la clave de correlación esperada por
     # comparison.py (CS_HistoricalOriginID) -- basta con la cabecera para
     # que se genere el informe (0 filas coincidentes es un resultado válido).

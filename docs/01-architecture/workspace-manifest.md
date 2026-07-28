@@ -392,3 +392,14 @@ módulo no coincide con el nombre real del objeto).
 - `checksum`/`last_reviewed_at` de artefacto son campos declarados pero
   no calculados ni verificados por ningún código todavía — puramente
   informativos en esta fase.
+
+## 20. Sprint 8.5 — Resource Resolver
+
+`resolve_artifact_path()` (§ 15 arriba) sigue existiendo sin cambios y
+sigue siendo la función que hace la resolución de ruta física real. Sobre
+ella se construyó, en Sprint 8.5, una capa de más alto nivel
+(`ResourceResolver`, `src/core/resource_resolver.py`) que añade petición/
+resultado tipados, reglas de estado (`missing`/`optional`/`deprecated`/
+`not_applicable`) y soporte de recursos generados — ver
+`docs/01-architecture/resource-resolver.md` para el diseño completo. Este
+documento no se duplica aquí.

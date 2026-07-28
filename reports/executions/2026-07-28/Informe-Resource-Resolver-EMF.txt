@@ -1,0 +1,245 @@
+=====================================================
+INFORME DE EJECUCION -- SPRINT 8.5: RESOURCE RESOLVER
+=====================================================
+
+Fecha: 2026-07-28  Rama: feature/drills-filtered-exports  Remoto: origin -> enablon-migration-framework
+
+================================================================
+1. Resumen ejecutivo
+================================================================
+
+Se implemento ResourceResolver (src/core/resource_resolver.py): una capa generica que resuelve ResourceRequest -> ResolvedResource contra un WorkspaceManifest + DataWorkspace, con errores tipados, soporte de recursos generados (el CSV de salida del EMF) y un comando CLI aditivo (workspace resolve). Como parte del mismo incremento se elimino la deuda HISTORICAL_CSV_CATEGORY de src/export/prototype/drills/pipeline.py: la comparacion opcional de Drills ahora pide explicitamente el artefacto operational_csv (Project Contract), no la categoria deprecated csv_enablon. La suite de tests paso de 513 a 557 casos en verde (+44), 7 skipped sin cambios. No se hizo ningun commit.
+
+================================================================
+2. Estado inicial
+================================================================
+
+  * Rama: feature/drills-filtered-exports -- correcta.
+  * Remoto: origin -> https://github.com/eduardovelasquezl/enablon-migration-framework.git -- correcto.
+  * git diff --check: sin errores de espacio en blanco.
+  * Unico cambio automatico detectado: .claude/settings.local.json (permisos locales acumulados) -- restaurado con git restore antes de empezar. Volvio a acumular permisos durante esta misma sesion (uso normal de la herramienta) -- no forma parte de este incremento, no debe commitearse.
+  * Suite completa antes de empezar: 513 passed, 7 skipped -- confirma la referencia dada por el encargo.
+  * Cambios de Sprint 8.4 confirmados sin commit -- no se tocaron ni se mezclaron con este incremento salvo donde Sprint 8.5 necesitaba extender el mismo archivo (src/cli.py, external-data-workspace.md).
+
+================================================================
+3. Inventario de rutas (Fase 1)
+================================================================
+
+  * src/export/prototype/drills/pipeline.py :: _resolve_historical_csv_path + HISTORICAL_CSV_PROJECT/CATEGORY/RELATIVE_PATH -- CSV de comparacion de Drills -- llamada directa a DataWorkspace.resolve() con categoria deprecated csv_enablon -- riesgo ALTO (deuda nombrada explicitamente por el encargo) -- MIGRADO en este sprint.
+  * src/core/workspace_manifest.py :: resolve_artifact_path() -- cualquier artefacto de un manifest -- ya reutiliza DataWorkspace.resolve(), sin tipado de peticion/resultado -- riesgo bajo -- reutilizado internamente por ResourceResolver, no duplicado.
+  * src/core/data_workspace.py :: DataWorkspace.resolve() -- cualquier ruta fisica -- correcto, base de todo lo demas -- sin riesgo -- se mantiene sin cambios.
+  * src/cli.py :: grupo workspace -- solo existia validate -- extendido de forma aditiva con resolve.
+  * src/export/prototype/drills/config.py :: SourceSpec.sql_path -- SQL de origen -- PROJECT_ROOT-relativo, repo-interno, git-versionado -- no es un recurso de DataWorkspace -- NO MIGRADO, no aplica.
+  * src/export/prototype/drills/mappings.py :: get_entity_catalog (via reference_data.entity_catalog_csv) -- catalogo de entidad -- inputs/entity_catalog/, gitignored -- deuda ya documentada y deliberadamente aplazada (external-data-workspace.md § 20) -- NO MIGRADO, decision previa mantenida.
+  * src/evidence/collector.py :: resolve_run_dir/load_run -- directorio de ejecucion local (outputs/) -- dominio distinto (ejecuciones locales, no workspace externo) -- no aplica.
+  * src/analysis/query_analyzer.py :: review_query_directory -- ficheros .sql via glob -- herramienta de analisis puntual, no pipeline en tiempo de ejecucion -- no aplica.
+  * src/config/loader.py :: PROJECT_ROOT, load_yaml -- configuracion del propio repo -- no aplica.
+
+================================================================
+4. Diseno
+================================================================
+
+EMF_DATA_ROOT -> DataWorkspace -> WorkspaceManifest -> ResourceResolver -> Pipeline/Validation/Comparison. ResourceResolver no conoce Drills ni ningun objeto migrable concreto -- vive en src/core/, reutiliza resolve_artifact_path()/DataWorkspace.resolve() para toda la seguridad de rutas. Ver docs/01-architecture/resource-resolver.md (20 secciones).
+
+================================================================
+5. Modelo Python
+================================================================
+
+ResourceRequest (frozen dataclass): module_id, artifact_type, project_id, required, require_physical_file, allowed_statuses, allow_deprecated, purpose, execution_id.
+ResolvedResource (frozen dataclass): project_id, module_id, artifact_type, declared_path, resolved_path, artifact_status, exists, required, contract_role, source, description, checksum, warnings, manifest_ref, generated.
+ResourceResolver.resolve(request) -> ResolvedResource.
+
+================================================================
+6. Errores
+================================================================
+
+9 excepciones tipadas bajo ResourceResolutionError(CoreError): UnknownProjectError, UnknownModuleError, UnknownArtifactError, ArtifactNotDeclaredError, ArtifactMissingError, PhysicalResourceMissingError, DeprecatedArtifactError, InvalidArtifactStatusError, ResourcePathError.
+
+================================================================
+7. Resolucion de recursos
+================================================================
+
+Tres responsabilidades separadas: declaracion (¿el manifest lo declara?), resolucion (¿que ruta absoluta?), existencia fisica (¿esta en disco?, solo si se pide explicitamente). "optional" nunca bloquea por ausencia fisica, ni con required=True. "not_applicable" nunca es resoluble. "deprecated" requiere allow_deprecated=True explicito.
+
+================================================================
+8. Recursos generados
+================================================================
+
+Acotado al unico caso real conocido: el CSV de salida del EMF (contracts.emf.generated/emf_output_pattern, ya declarado desde Sprint 8.4). Placeholders cerrados ({module}, {execution_id}); execution_id validado contra ^[A-Za-z0-9_-]+$ (rechaza .., separadores de ruta, espacios). Nunca crea archivo ni directorio. No generalizado a nivel de artefacto individual -- deuda tecnica explicita, no omision.
+
+================================================================
+9. Naming
+================================================================
+
+Sin cambios de comportamiento: validate_manifest() (Sprint 8.4) sigue validando la convencion; ResourceResolver no la reinterpreta ni usa glob.
+
+================================================================
+10. Migracion de HISTORICAL_CSV_CATEGORY
+================================================================
+
+Eliminadas: HISTORICAL_CSV_PROJECT, HISTORICAL_CSV_CATEGORY ("csv_enablon", deprecated), HISTORICAL_CSV_RELATIVE_PATH, _resolve_historical_csv_path().
+Anadidas: _build_drills_comparison_manifest() (manifest minimo en codigo -- no existe workspace.yaml real todavia) y _resolve_comparison_csv_path(), que pide operational_csv via ResourceResolver.
+Cambio de comportamiento fisico: la carpeta consultada pasa de CSV_Enablon/Drills-22072026-41.csv a CSV_Enablon_Operational/Drills.csv. Ninguna carpeta tiene datos reales hoy, asi que el comportamiento observable no cambia (sigue "omitida" en ambos casos) -- confirmado por test_fichero_en_categoria_deprecated_csv_enablon_no_se_resuelve.
+Directiva explicita de este sprint cumplida: "Drills usa Project Contract para la comparacion operativa".
+
+================================================================
+11. Integracion Drills
+================================================================
+
+Prioridad 1 (CSV operativo de comparacion) -- implementada. Prioridad 2 (catalogo de entidad) -- NO migrada, decision previa mantenida. Prioridad 3 (SQL) -- NO migrada, vive en Git. Ningun archivo real movido. "export drills" y "run --project moeve --object drills" verificados con --help (sin SQL real en este entorno) -- interfaz sin cambios.
+
+================================================================
+12. CLI
+================================================================
+
+python main.py workspace resolve --manifest <path> --module <id> --artifact <kind> [--require-exists] [--allow-deprecated]. No abre el archivo, no modifica nada, exit code 0/distinto de 0 segun resolucion. workspace validate sin cambios (verificado por test de no regresion). No expone --execution-id (deuda explicita).
+
+================================================================
+13. Tests
+================================================================
+
+Nuevos:
+  * tests/test_resource_resolver.py -- 33 tests (proyecto/modulo/artefacto validos y desconocidos, los 6 estados de artefacto, resolucion con/sin path, existencia fisica en sus 4 combinaciones, envoltura de DataWorkspaceError, Unicode/espacios, recursos generados con 6 variantes de escape parametrizadas).
+  * tests/test_cli_workspace_resolve.py -- 10 tests (resolucion valida, ausencia no bloqueante, modulo/artefacto desconocidos, --require-exists en sus dos desenlaces, --allow-deprecated, manifest inexistente, no revela secretos, no rompe workspace validate).
+
+Modificado:
+  * tests/test_drills_data_workspace_integration.py -- de 6 a 7 tests (se anadio test_fichero_en_categoria_deprecated_csv_enablon_no_se_resuelve; el resto adaptado al nuevo nombre/categoria, misma intencion).
+
+================================================================
+14. Resultados
+================================================================
+
+513 passed, 7 skipped  (referencia inicial, confirmada al empezar)
+557 passed, 7 skipped  (al terminar -- +44, 0 nuevos skipped, 0 fallos)
+
+py_compile sin errores sobre los ficheros de produccion modificados/creados. CLI verificada manualmente en todos los estados de artefacto y flags.
+
+================================================================
+15. Compatibilidad
+================================================================
+
+Sin EMF_DATA_ROOT: comportamiento identico a antes. Con EMF_DATA_ROOT pero sin archivo: identico. Con archivo en la carpeta nueva (CSV_Enablon_Operational/Drills.csv): se genera comparison_report.yaml como antes. Con archivo SOLO en la carpeta vieja (CSV_Enablon/): ya no se genera -- cambio deliberado, documentado, sin datos reales afectados. resolve_artifact_path() sin cambios.
+
+================================================================
+16. Archivos creados
+================================================================
+
+  * src/core/resource_resolver.py
+  * docs/01-architecture/resource-resolver.md
+  * tests/test_resource_resolver.py
+  * tests/test_cli_workspace_resolve.py
+  * reports/executions/2026-07-28/Informe-Resource-Resolver-EMF.md (+ .txt)
+
+================================================================
+17. Archivos modificados
+================================================================
+
+  * src/export/prototype/drills/pipeline.py (migracion HISTORICAL_CSV_CATEGORY)
+  * src/cli.py (comando workspace resolve)
+  * tests/test_drills_data_workspace_integration.py (adaptado + 1 test nuevo)
+  * docs/01-architecture/workspace-manifest.md (§ 20, puntero)
+  * docs/01-architecture/external-data-workspace.md (§ 23, puntero + cierre de punto pendiente de § 22)
+  * docs/01-architecture/project-contract-model.md (§ 6.0, puntero)
+  * docs/07-developer-guide/drills-real-data-inventory.md (fila 2, referencias actualizadas)
+
+No se modifico getting-started.md -- no referencia comandos de workspace hoy.
+
+================================================================
+18. Riesgos
+================================================================
+
+El manifest minimo construido en codigo dentro de pipeline.py es una duplicacion deliberada y acotada del mismo patron que examples/workspace/workspace.example.yaml -- documentado explicitamente para revisarlos juntos si divergen. El cambio de carpeta fisica consultada es invisible para quien ya hubiera colocado el CSV en la carpeta vieja -- mitigado porque ninguna de las dos carpetas tiene datos reales todavia.
+
+================================================================
+19. Deuda tecnica
+================================================================
+
+  * Manifest de Drills embebido en codigo en vez de un workspace.yaml real.
+  * Recursos generados acotados a contracts.emf, no generalizados por artefacto.
+  * entity_catalog_csv y SQL de origen de Drills siguen fuera del ResourceResolver.
+  * CLI sin --execution-id.
+  * Clasificacion real de Drills-22072026-41.csv (Platform vs Project Contract) sigue abierta.
+
+================================================================
+20. Recomendacion
+================================================================
+
+Sprint 8.5 completo segun los criterios de aceptacion del encargo. Capa generica, tipada, sin fallback oculto, sin dependencias nuevas. Siguientes pasos recomendados: (a) workspace.yaml real del proyecto para retirar el manifest embebido; (b) confirmar con el cliente la clasificacion de Drills-22072026-41.csv.
+
+================================================================
+21. Propuesta de commits (NO ejecutados -- requieren aprobacion explicita)
+================================================================
+
+Sprint 8.4 sigue sin commit. Se recomienda mantener commits separados (opcion A) -- Sprint 8.4 (Manifest) y Sprint 8.5 (Resolver) son aislables limpiamente, con una unica excepcion real de solape (src/cli.py, extendido por ambos sprints en el mismo archivo) -- no bloqueante.
+
+Commit 1 (Sprint 8.4, ya pendiente, sin tocar por este informe): mensaje ya cubierto por Informe-Workspace-Manifest-EMF.md de 2026-07-27.
+
+Commit 2 (Sprint 8.5 -- este incremento), mensaje sugerido:
+
+  feat(core): add generic ResourceResolver over the Workspace Manifest
+
+  Adds ResourceResolver/ResourceRequest/ResolvedResource
+  (src/core/resource_resolver.py) with typed errors, physical-existence
+  checks decoupled from declaration, and support for the one real
+  generated-resource case (EMF output pattern). Migrates Drills'
+  historical CSV comparison off the deprecated HISTORICAL_CSV_CATEGORY
+  constant to an explicit operational_csv (Project Contract) request.
+  Adds `workspace resolve` CLI command.
+
+Archivos sugeridos: src/core/resource_resolver.py, src/export/prototype/drills/pipeline.py, src/cli.py, tests/test_resource_resolver.py, tests/test_cli_workspace_resolve.py, tests/test_drills_data_workspace_integration.py, docs/01-architecture/resource-resolver.md, docs/01-architecture/workspace-manifest.md, docs/01-architecture/external-data-workspace.md, docs/01-architecture/project-contract-model.md, docs/07-developer-guide/drills-real-data-inventory.md, reports/executions/2026-07-28/Informe-Resource-Resolver-EMF.md (+.txt).
+
+Excluir de cualquier commit: .claude/settings.local.json (permisos locales).
+
+================================================================
+22. git diff --check
+================================================================
+
+Sin errores de espacio en blanco (exit code 0) -- solo warnings de conversion LF->CRLF de Git en Windows.
+
+================================================================
+23. git status --short (al terminar este informe)
+================================================================
+
+ M .claude/settings.local.json
+ M config/data_workspace.yaml
+ M docs/01-architecture/external-data-workspace.md
+ M src/cli.py
+ M src/export/prototype/drills/pipeline.py
+ M tests/test_drills_data_workspace_integration.py
+?? docs/01-architecture/drills-csv-contract.md
+?? docs/01-architecture/knowledge-coverage-matrix.md
+?? docs/01-architecture/knowledge-traceability-matrix.md
+?? docs/01-architecture/project-contract-model.md
+?? docs/01-architecture/resource-resolver.md
+?? docs/01-architecture/workspace-manifest.md
+?? docs/01-architecture/workspace-naming-convention.md
+?? docs/01-architecture/workspace-validation-checklist.md
+?? docs/07-developer-guide/drills-real-data-inventory.md
+?? examples/
+?? reports/executions/2026-07-27/...
+?? reports/executions/2026-07-28/Informe-Resource-Resolver-EMF.md
+?? reports/executions/2026-07-28/Informe-Resource-Resolver-EMF.txt
+?? src/core/resource_resolver.py
+?? src/core/workspace_manifest.py
+?? tests/test_cli_workspace_resolve.py
+?? tests/test_cli_workspace_validate.py
+?? tests/test_resource_resolver.py
+?? tests/test_workspace_manifest.py
+
+(config/data_workspace.yaml, drills-csv-contract.md, knowledge-*.md, workspace-manifest.md, workspace-naming-convention.md, workspace-validation-checklist.md, examples/, src/core/workspace_manifest.py, tests/test_workspace_manifest.py, tests/test_cli_workspace_validate.py y los informes de 2026-07-27 son Sprint 8.4, no tocados por este incremento salvo la extension puntual ya descrita en § 17.)
+
+================================================================
+24. git diff --stat (archivos tocados por Sprint 8.5)
+================================================================
+
+  src/core/resource_resolver.py                          nuevo (~350 lineas)
+  src/export/prototype/drills/pipeline.py                 +~95 -~30
+  src/cli.py                                               +~76
+  tests/test_drills_data_workspace_integration.py          +~35 -~20
+  tests/test_resource_resolver.py                         nuevo (~330 lineas)
+  tests/test_cli_workspace_resolve.py                      nuevo (~150 lineas)
+  docs/01-architecture/resource-resolver.md                nuevo (~230 lineas)
+  docs/01-architecture/workspace-manifest.md                +~9
+  docs/01-architecture/external-data-workspace.md           +~19
+  docs/01-architecture/project-contract-model.md            +~13
+  docs/07-developer-guide/drills-real-data-inventory.md      +~1 -~1

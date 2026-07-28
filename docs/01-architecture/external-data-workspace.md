@@ -2,8 +2,19 @@
 
 **Status:** Approved Design (diseño conceptual + contrato de configuración
 mínimo; implementación del resolvedor en `src/core/data_workspace.py`
-descrita en detalle en § 10-11; workspace real todavía no creado en ningún
-equipo — ver § 20).
+descrita en detalle en § 10-11). El workspace real (carpetas vacías) fue
+creado en Sprint 8, evolucionado en Sprint 8.2 (§ 5, § 21-23),
+normalizado/validado en Sprint 8.3 (§ 24-26) y formalizado como
+Workspace Manifest en Sprint 8.4 — sigue sin contener ningún dato real:
+la recuperación de ETL/CSV/mappings/evidencias sigue siendo
+responsabilidad 100% manual del usuario. Ver
+`docs/01-architecture/workspace-naming-convention.md` y
+`docs/01-architecture/workspace-validation-checklist.md` (Sprint 8.3)
+para las reglas de nomenclatura y el procedimiento de validación de
+organización (nunca de contenido), y
+`docs/01-architecture/workspace-manifest.md` (Sprint 8.4) para el modelo
+declarativo (`WorkspaceManifest`, `src/core/workspace_manifest.py`) que
+formaliza en código lo que ambos documentos ya describían en prosa.
 
 ## 1. Propósito
 
@@ -59,12 +70,15 @@ donde vive un dato de cliente de volumen real.
 
 ## 5. Estructura del workspace externo
 
-Ruta de ejemplo para este equipo (configurable, ver § 10):
+**Vigente desde Sprint 8.2** (evoluciona la estructura de Sprint 7, ver §
+21 para el detalle del cambio). Ruta de ejemplo para este equipo
+(configurable, ver § 10):
 
 ```
 C:\Users\EduardoVelásquez\Desktop\Migracion_Enablon_Data\
     ETL\
-    CSV_Enablon\
+    CSV_Enablon_Template\
+    CSV_Enablon_Operational\
     Mappings\
     Catalogs\
     Errors\
@@ -79,6 +93,13 @@ de entrega del cliente (`Bloque1`…`Bloque7`) — esos nombres se conservan
 solo como referencia de procedencia en el inventario de recuperación
 (`local-data-recovery-checklist.md` § 5), nunca como estructura operativa.
 
+`CSV_Enablon` (singular, sin sufijo) es la categoría de Sprint 7 —
+**superada** por la distinción Template/Operational de Sprint 8.2 (§ 21),
+pero su carpeta física no se elimina ni se renombra sin verificar primero
+que no contiene ningún dato (a la fecha de Sprint 8.2 está vacía en el
+único puesto de trabajo real de este proyecto). Ver § 21 para la relación
+exacta entre ambos esquemas.
+
 ### 5.1 Alternativa evaluada: estructura plana vs. por proyecto
 
 Dos alternativas evaluadas para el nivel superior del workspace:
@@ -88,7 +109,8 @@ implícito):
 ```
 Migracion_Enablon_Data\
     ETL\
-    CSV_Enablon\
+    CSV_Enablon_Template\
+    CSV_Enablon_Operational\
     ...
 ```
 
@@ -98,7 +120,8 @@ Migracion_Enablon_Data\
     projects\
         moeve\
             ETL\
-            CSV_Enablon\
+            CSV_Enablon_Template\
+            CSV_Enablon_Operational\
             Mappings\
             Catalogs\
             Errors\
@@ -124,15 +147,25 @@ un mecanismo de código nuevo).
 
 | Categoría | Contenido | Ejemplo |
 |---|---|---|
-| `etl` | Libros Excel de ETL originales del cliente | `ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx` |
-| `csv_enablon` | CSV reales exportados de Enablon (histórico, para comparación) | `Drills-22072026-41.csv` |
-| `mappings` | Mapeos SQL↔Enablon, catálogos de entidad reales | `entidades_mapeo_ANTIGUO_referencia_historica.csv` |
-| `catalogs` | Catálogos de referencia de gran volumen | `First_Axis_export_bruto.csv` |
-| `errors` | Documento de incidencias del cliente (Help Desk) | `helpdesk_export_834_tickets.xlsx` |
-| `evidence` | Excel de evidencia generados por una ejecución real | `evidence_client.xlsx` |
-| `sql` | Resultados de queries ejecutadas manualmente contra SQL Server real | — |
-| `outputs` | Exportaciones completas (`drills.csv` de una corrida real, no de test) | — |
-| `archive` | Material histórico sin categoría activa | — |
+| `etl` | Documentación histórica de transformación — libros Excel de ETL originales del cliente | `ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx` |
+| `csv_enablon_template` *(Sprint 8.2, sustituye a `csv_enablon`)* | Exportaciones **completas** obtenidas directamente desde Enablon — pueden incluir campos de sistema, campos calculados por Enablon y columnas nunca utilizadas por el proyecto. Ver `project-contract-model.md` § "Platform Contract". | Un export íntegro de un objeto Enablon con sus ~36 columnas nativas |
+| `csv_enablon_operational` *(Sprint 8.2, nueva)* | El CSV **realmente utilizado para importar** — el contrato funcional real del cliente, normalmente sin las columnas vacías/no usadas del template. Es la referencia principal para validar el EMF. Ver `project-contract-model.md` § "Project Contract". | El CSV que el equipo del cliente sube de verdad a Enablon en una carga real |
+| `mappings` | Reglas de correspondencia SQL↔Enablon, catálogos de entidad reales | `entidades_mapeo_ANTIGUO_referencia_historica.csv` |
+| `catalogs` | Catálogos auxiliares de referencia de gran volumen | `First_Axis_export_bruto.csv` |
+| `errors` | Incidencias históricas — documento de Help Desk del cliente | `helpdesk_export_834_tickets.xlsx` |
+| `evidence` | Evidencias de migración — Excel de evidencia generados por una ejecución real | `evidence_client.xlsx` |
+| `sql` | Consultas versionadas / resultados de queries ejecutadas manualmente contra SQL Server real | — |
+| `outputs` | Resultados del EMF — exportaciones completas (`drills.csv` de una corrida real, no de test) | — |
+| `archive` | Copias históricas / material sin categoría activa | — |
+
+**Nota de implementación (deliberadamente no resuelta en Sprint 8.2)**:
+`config/data_workspace.yaml` sigue declarando, a la fecha de este
+documento, la categoría única `csv_enablon` (§ 11) — el código
+(`src/core/data_workspace.py`, `pipeline.py::HISTORICAL_CSV_CATEGORY`) no
+se ha modificado en este sprint (fuera de alcance: "Claude únicamente
+debe preparar la estructura, documentación y reglas de uso", no código).
+Adaptar `config/data_workspace.yaml` y `pipeline.py` a las dos categorías
+nuevas queda como trabajo pendiente explícito — ver § 22.
 
 ## 7. Datos versionables
 
@@ -240,7 +273,12 @@ sustituye por una resolución vía `DataWorkspace` (§ 11 de
 1. Si `EMF_DATA_ROOT` está declarado y el fichero existe en
    `csv_enablon/Drills-22072026-41.csv` dentro del workspace, se usa para
    `comparison_report.yaml` (comportamiento idéntico al actual: la
-   comparación es opcional).
+   comparación es opcional). **Pregunta abierta de Sprint 8.2 (§ 21, no
+   resuelta aquí)**: bajo el nuevo esquema Template/Operational, no está
+   confirmado si `Drills-22072026-41.csv` corresponde conceptualmente a
+   `csv_enablon_template` (export completo de producción, 36 columnas) o
+   a `csv_enablon_operational` (el CSV que de verdad se cargó) — no se
+   asume ninguna de las dos sin confirmación del cliente/consultor.
 2. Si `EMF_DATA_ROOT` no está declarado, o el fichero no está en el
    workspace, `comparison_report.yaml` simplemente no se genera — **nunca
    cae de vuelta a leer un dato real dentro de `inputs/`** (esa carpeta ya
@@ -270,7 +308,8 @@ de Enablon combinan campos estándar estables con campos personalizados de
 cliente (`CS_*`), que deben declararse expresamente en plantillas/mappings/
 validaciones — nunca aceptarse automáticamente por prefijo. Los CSV reales
 que los contienen residen siempre en el workspace externo, categoría
-`csv_enablon`.
+`csv_enablon_template` o `csv_enablon_operational` según corresponda
+(Sprint 8.2, § 21).
 
 ## 16. Evidencias y outputs
 
@@ -343,3 +382,221 @@ arquitectura de destino hacia la que se recupera.
   ruta real (comportamiento perezoso, deliberado — ver
   `framework-core-v1.md`-style justificación en el informe: no fallar
   hasta que haga falta).
+
+## 21. Evolución Sprint 8.2 — de `csv_enablon` a Template/Operational
+
+**Motivación**: un único CSV real de Enablon no basta para distinguir dos
+preguntas distintas que el proyecto necesita responder por separado:
+"¿qué columnas puede llegar a tener un objeto de Enablon en general?"
+(pregunta de plataforma) y "¿qué columnas usa realmente este cliente para
+importar?" (pregunta de proyecto). La categoría única `csv_enablon` de
+Sprint 7 no distinguía entre ambas — se sustituye por dos categorías:
+
+| Categoría anterior (Sprint 7) | Categorías nuevas (Sprint 8.2) |
+|---|---|
+| `csv_enablon` | `csv_enablon_template` **y** `csv_enablon_operational` (dos carpetas separadas, no una con subcarpetas) |
+
+Ver `docs/01-architecture/project-contract-model.md` (nuevo en este
+sprint) para la definición completa de qué representa cada uno
+(**Platform Contract** vs. **Project Contract**) y cómo se relacionan con
+el **EMF Contract** (el CSV que genera el Framework).
+
+**Qué cambió realmente en Sprint 8.2** (solo estructura y documentación,
+nada de código ni datos):
+
+1. Se crearon dos carpetas nuevas, vacías, en el workspace externo real
+   de este equipo: `projects/moeve/CSV_Enablon_Template/` y
+   `projects/moeve/CSV_Enablon_Operational/`.
+2. La carpeta `projects/moeve/CSV_Enablon/` (Sprint 7) **no se movió, no
+   se renombró y no se eliminó** — sigue existiendo, vacía, sin ningún
+   dato dentro a la fecha de este sprint.
+3. Este documento y `drills-real-data-inventory.md` se actualizaron para
+   reflejar la nueva estructura y explicar el nuevo modelo de contratos.
+4. `config/data_workspace.yaml` y el código de `DataWorkspace`/Drills
+   **no se modificaron** — siguen usando la categoría `csv_enablon`
+   heredada de Sprint 7 (ver § 22 para el trabajo pendiente).
+
+## 22. Trabajo de código pendiente (explícitamente NO hecho en Sprint 8.2)
+
+Sprint 8.2 fue exclusivamente documental/estructural. Queda pendiente,
+como una tarea de código futura y separada (requiere su propia
+autorización):
+
+- Añadir `csv_enablon_template`/`csv_enablon_operational` a
+  `config/data_workspace.yaml` (sustituyendo o conviviendo con
+  `csv_enablon`, decisión pendiente).
+- Decidir y actualizar, en `src/export/prototype/drills/pipeline.py`, si
+  `HISTORICAL_CSV_CATEGORY` debe apuntar a `csv_enablon_template`, a
+  `csv_enablon_operational`, o si Drills necesita seguir usando un
+  concepto propio distinto de ambos (pendiente de la clasificación de
+  `Drills-22072026-41.csv`, ver § 13).
+- Diseñar (no implementar todavía tampoco, ver
+  `project-contract-model.md` § "Futura validación automática") el motor
+  de comparación de tres vías Template → Operational → EMF.
+- Decidir si la categoría `csv_enablon` (Sprint 7) se retira formalmente
+  de `config/data_workspace.yaml` una vez confirmado que ningún dato
+  real la usa, o si se mantiene como alias de compatibilidad.
+
+## 23. Criterios de aceptación de Sprint 8.2
+
+1. Las dos carpetas nuevas existen en el workspace externo real y están
+   vacías — verificado por listado de directorio en la ejecución de esta
+   fase.
+2. Ninguna carpeta ni archivo existente se movió, renombró o eliminó.
+3. Ningún dato real se copió, descargó ni generó de forma ficticia.
+4. `project-contract-model.md` define los tres niveles de contrato
+   (Platform/Project/EMF) sin implementar ningún motor de comparación.
+5. `config/data_workspace.yaml` y el código de `src/core/`/Drills quedan
+   sin modificar — verificado por `git status --short` al cierre de esta
+   fase.
+6. No se ejecutó SQL, pipeline, ni sample. No se creó ningún commit.
+
+## 24. Normalización del workspace (Sprint 8.3)
+
+**Resultado de la revisión de esta fase**: la estructura física del
+workspace externo real de este equipo, verificada por listado de
+directorio en el momento de esta revisión, es:
+
+```
+projects/moeve/
+    Archive/            [conforme]
+    Catalogs/            [conforme, vacía]
+    CSV_Enablon/          [DEPRECATED -- ver más abajo]
+    CSV_Enablon_Operational/ [conforme, vacía]
+    CSV_Enablon_Template/     [conforme, vacía]
+    Errors/                    [conforme, vacía]
+    ETL/                        [conforme, vacía]
+    Evidence/                    [conforme, vacía]
+    Mappings/                     [conforme, vacía]
+    Outputs/                       [conforme, vacía]
+    SQL/                             [conforme, vacía]
+```
+
+Ninguna carpeta legacy adicional fue detectada más allá de `CSV_Enablon/`
+— es la única superada por la evolución de Sprint 8.2. **No se elimina**
+(regla dura de este sprint: "no eliminar carpetas legacy") — se marca
+formalmente:
+
+> **`projects/moeve/CSV_Enablon/` — Status: Deprecated.**
+> Sustituida por `CSV_Enablon_Template/` y `CSV_Enablon_Operational/`
+> (Sprint 8.2, § 21). No colocar archivos nuevos aquí. Se conserva vacía
+> hasta que se confirme (por quien administra el workspace) que ningún
+> proceso ni persona depende todavía de esta ruta, momento en el que
+> podría eliminarse manualmente — esa eliminación no es parte de este
+> sprint ni de ningún sprint de Claude hasta que se autorice
+> explícitamente.
+
+Ningún archivo se movió automáticamente (regla dura de este sprint) — no
+había ningún archivo que mover: la carpeta está vacía.
+
+## 25. Workspace Manifest — diseño conceptual (Sprint 8.3, NO implementado)
+
+**Nada de esta sección tiene código ni fichero real.** Es el diseño de un
+manifiesto declarativo, versionado, que un incremento futuro podría
+generar por proyecto para responder de un vistazo "¿qué tiene este
+proyecto y en qué estado está?", sin tener que recorrer el workspace a
+mano.
+
+### 25.1 Propuesta de forma (`workspace.yaml`, conceptual)
+
+```yaml
+# EJEMPLO CONCEPTUAL -- este fichero NO existe todavía, no se genera en
+# este sprint, y esta forma no está implementada por ningún código.
+project: moeve
+last_reviewed: "2026-07-27"
+reviewed_by: "Functional Migration Team"   # texto libre, sin sistema de usuarios propio (mismo
+                                            # criterio ya fijado en canonical-data-model.md § 14)
+
+modules:
+  drills:
+    etl:
+      path: "ETL/Drills.xlsx"
+      status: pending          # pending | present | validated
+    csv_template:
+      path: "CSV_Enablon_Template/Drills-22072026-41.csv"
+      status: pending
+    csv_operational:
+      path: "CSV_Enablon_Operational/Drills.csv"
+      status: pending
+    sql:
+      path: "sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql"  # ya en Git, no en el workspace externo
+      status: present
+    mapping:
+      path: "inputs/entity_catalog/entidades_mapeo_ANTIGUO_referencia_historica.csv"  # ya en el repo, no en el workspace externo (deuda técnica, § 20)
+      status: present
+    state: draft_partial        # draft_partial | ready_for_sample | sample_executed | full_executed
+```
+
+### 25.2 Campos propuestos, uno por artefacto de módulo
+
+- `etl.path` / `etl.status`
+- `csv_template.path` / `csv_template.status`
+- `csv_operational.path` / `csv_operational.status`
+- `sql.path` / `sql.status`
+- `mapping.path` / `mapping.status`
+- `state` (agregado del módulo completo)
+
+Vocabulario de `status` propuesto (cerrado, mismo espíritu que el resto
+de vocabularios ya fijados en este proyecto —
+`canonical-data-model.md` § 17, `mapping-specification.md` § 17):
+`pending` (no recuperado todavía), `present` (existe en la ruta
+declarada, sin validar más allá de organización — ver
+`workspace-validation-checklist.md`), `validated` (pasó la validación de
+organización de § "Fase 7").
+
+### 25.3 Por qué no se implementa todavía
+
+- **No hay todavía ningún dato real en el workspace** (§ 24) — un
+  manifiesto que describa un workspace vacío no aporta valor operativo
+  hoy, sería una plantilla sin contenido real que mantener sincronizada.
+- **Principio 8 (No Abstraction Without a Real Consumer)**: el consumidor
+  real de este manifiesto (una CLI que lo lea antes de un sample, o un
+  humano que lo consulte) no existe todavía — se documenta la forma para
+  cuando exista ese consumidor, no se construye antes.
+- **Quién lo mantendría actualizado** (¿se regenera automáticamente
+  escaneando el workspace, o lo edita a mano quien incorpora un archivo?)
+  es una decisión de implementación explícitamente diferida — ambas
+  opciones son compatibles con la forma propuesta en § 25.1.
+
+### 25.4 Relación con `config/data_workspace.yaml`
+
+`workspace.yaml` (propuesto) y `config/data_workspace.yaml` (ya
+implementado) **no son el mismo concepto**: `config/data_workspace.yaml`
+vive en el repositorio, declara categorías genéricas por proyecto (mismo
+esquema para cualquier módulo), y lo lee `DataWorkspace` en tiempo de
+ejecución. `workspace.yaml` (propuesto) viviría **dentro del propio
+workspace externo** (nunca en Git — sería, él mismo, un dato operativo
+del proyecto, no código), y describiría el estado concreto de CADA
+módulo (Drills, Safety Meetings, MOC...) con sus rutas y artefactos
+reales. Uno es esquema (código), el otro sería inventario de instancia
+(dato) — misma distinción que Mapping Model vs. datos de una ejecución
+real, ya aplicada en el resto de la documentación EMF.
+
+## 26. Criterios de aceptación de Sprint 8.3
+
+1. La carpeta legacy `CSV_Enablon/` queda marcada `Status: Deprecated` en
+   documentación, sin eliminarse ni renombrarse.
+2. No se detectó ninguna otra carpeta obsoleta más allá de esa.
+3. Ningún archivo se movió, copió ni se generó de forma ficticia — el
+   workspace sigue sin ningún dato real (§ 24).
+4. El diseño del Workspace Manifest (§ 25) no tiene ninguna
+   implementación de código ni fichero real generado.
+5. `workspace-naming-convention.md` y `workspace-validation-checklist.md`
+   existen como documentos nuevos, referenciados desde este documento.
+6. No se ejecutó SQL, pipeline, ni sample. No se creó ningún commit. No
+   se modificó ningún mapping ni código.
+
+## 27. Sprint 8.4 — Workspace Manifest (código)
+
+El diseño conceptual de `workspace.yaml` (§ 25) se implementó en Sprint
+8.4 como `WorkspaceManifest`/`WorkspaceManifestLoader`/`validate_manifest`
+en `src/core/workspace_manifest.py`, con un ejemplo versionado
+(`examples/workspace/workspace.example.yaml`) y un comando CLI
+(`python main.py workspace validate --manifest <path>`). Ver
+`docs/01-architecture/workspace-manifest.md` para el diseño completo —
+no se repite aquí. Como parte de esta implementación,
+`config/data_workspace.yaml` ganó dos categorías nuevas, puramente
+aditivas: `csv_enablon_template` y `csv_enablon_operational` (§ 21) — la
+categoría legacy `csv_enablon` se mantiene sin cambios para no romper el
+comportamiento actual de Drills (`pipeline.py::HISTORICAL_CSV_CATEGORY`
+sigue sin modificarse, ver § 22, todavía pendiente).

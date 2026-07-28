@@ -1,0 +1,246 @@
+# workspace.example.yaml -- EJEMPLO VERSIONABLE, sin datos sensibles.
+#
+# Plantilla de referencia para el Workspace Manifest (Sprint 8.4, ver
+# docs/01-architecture/workspace-manifest.md). NO es el manifest real de
+# ningún puesto de trabajo -- ninguna ruta aquí apunta a un archivo que
+# exista de verdad; ningún nombre de usuario, credencial ni dato de
+# cliente aparece en este fichero.
+#
+# Cargable directamente con:
+#   WorkspaceManifestLoader.load_from_path(Path("examples/workspace/workspace.example.yaml"))
+# y válido contra validate_manifest() sin violaciones (ver
+# tests/test_workspace_manifest.py::test_carga_de_ejemplo_moeve_sin_violaciones).
+
+project:
+  id: moeve
+  display_name: "Moeve"
+  status: active
+  version: "1.0"
+  owner: "Functional Migration Team"
+  last_reviewed_at: "2026-07-27"
+
+workspace:
+  schema_version: "1.0"
+  project_root: projects/moeve
+  naming_convention:
+    etl: "{module}.xlsx"
+    sql: "{module}.sql"
+    mapping: "{module}.xlsx"
+    operational_csv: "{module}.csv"
+    outputs: "{module}_{execution_id}.csv"
+    template_csv: preserve_source_name
+  deprecated_paths:
+    - CSV_Enablon
+
+modules:
+
+  # -------------------------------------------------------------------
+  # Único módulo con pipeline ejecutable (config/exports/drills.yaml) --
+  # el único con artefactos parcialmente definidos, tal como pide el
+  # encargo de Sprint 8.4.
+  # -------------------------------------------------------------------
+  drills:
+    display_name: "Drills (Business Continuity Management / Simulacros)"
+    enabled: true
+    status: in_progress
+    source_system: prevencion
+    target_object: Drills
+    canonical_name: Drills
+    artifacts:
+      etl:
+        path: null
+        status: missing
+        description: >
+          Libro ETL histórico de Simulacros/BCM -- solo auditoría, no
+          bloquea el sample (ver drills-real-data-inventory.md § 8).
+      template_csv:
+        path: null
+        status: missing
+        contract_role: platform
+        description: >
+          Export completo de Enablon (Platform Contract) -- nombre real
+          pendiente de confirmar (ver project-contract-model.md § 4).
+      operational_csv:
+        path: null
+        status: missing
+        required_for_comparison: true
+        contract_role: project
+        description: >
+          CSV realmente cargado (Project Contract). Candidato conocido:
+          Drills-22072026-41.csv -- su clasificación como Template u
+          Operational sigue sin confirmarse (pregunta abierta, no
+          resuelta por este ejemplo).
+      sql:
+        path: null
+        status: present
+        required_for_sample: true
+        required_for_full: true
+        description: "Query fuente, ya versionada en Git -- no vive en el workspace externo."
+        source: "git:sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql"
+      mapping:
+        path: null
+        status: present
+        required_for_sample: true
+        required_for_full: true
+        description: >
+          Catálogo de entidad de Simulacros, ya presente localmente en el
+          repositorio (no vive en el workspace externo -- deuda técnica
+          documentada en external-data-workspace.md § 20).
+        source: "repo:inputs/entity_catalog/entidades_mapeo_ANTIGUO_referencia_historica.csv"
+      catalogs:
+        path: null
+        status: not_applicable
+        description: "Simulacros no usa el catálogo First_Axis vigente (ver CLAUDE.md)."
+      errors:
+        path: null
+        status: present
+        description: "Documento de incidencias del cliente, ya presente localmente."
+        source: "repo:inputs/incidents/helpdesk_export_834_tickets.xlsx"
+      evidence:
+        path: null
+        status: missing
+        description: "Ninguna ejecución real archivada todavía en el workspace externo."
+      outputs:
+        path: null
+        status: missing
+        description: "Ninguna exportación real archivada todavía en el workspace externo."
+    contracts:
+      platform:
+        artifact: template_csv
+      project:
+        artifact: operational_csv
+      emf:
+        generated: true
+        output_pattern: "Drills_{execution_id}.csv"
+    notes: >
+      Único módulo con pipeline ejecutable
+      (src/export/prototype/drills/). Ver
+      docs/07-developer-guide/drills-real-data-inventory.md para el
+      inventario operativo completo y
+      docs/01-architecture/drills-csv-contract.md para el contrato de
+      8/36 columnas ya implementado.
+
+  # -------------------------------------------------------------------
+  # Los 7 módulos restantes: sin pipeline todavía (sin
+  # config/exports/<modulo>.yaml) -- status planned, artefactos missing,
+  # ningún nombre de archivo inventado. canonical_name solo se declara
+  # cuando el objeto real de Enablon es inequívoco (ver
+  # config/modules.yaml -> csv_enablon_real); se deja sin declarar
+  # cuando el módulo cubre más de un objeto real o el nombre de módulo
+  # no coincide con el nombre real del objeto.
+  # -------------------------------------------------------------------
+
+  safety_meetings:
+    display_name: "Safety Meetings (Reuniones de grupo)"
+    enabled: false
+    status: planned
+    source_system: prevencion
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: >
+      Sin config/exports/safety_meetings.yaml todavía. Cubre dos objetos
+      reales distintos (Group_Meetings, Update_External_Meeting_Participations
+      -- ver config/modules.yaml), por eso no se declara un único
+      canonical_name.
+
+  moc:
+    display_name: "MOC (Management of Change)"
+    enabled: false
+    status: planned
+    source_system: gct
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: >
+      Sin config/exports/moc.yaml todavía. El objeto real de Enablon se
+      llama "Change_Register" (ver config/modules.yaml), no "MOC" -- no se
+      asume ese nombre como canonical_name sin confirmarlo con el
+      responsable del proyecto.
+
+  bypass:
+    display_name: "Bypass de Funciones y Elementos de Seguridad (BES)"
+    enabled: false
+    status: planned
+    source_system: prevencion
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: "Sin config/exports/bypass.yaml todavía."
+
+  events:
+    display_name: "Health & Safety Incidents (Eventos, Impactos, Investigaciones, PSM)"
+    enabled: false
+    status: planned
+    source_system: prevencion
+    canonical_name: Events
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: >
+      Sin config/exports/events.yaml todavía. canonical_name="Events"
+      confirmado por config/modules.yaml (csv_enablon_real incluye
+      "Events-*.csv") -- este módulo produce además Impacts/Investigations/
+      PSM_forms, no cubiertos por este único canonical_name.
+
+  ops:
+    display_name: "Behaviour Based Safety (OPS)"
+    enabled: false
+    status: planned
+    source_system: prevencion
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: >
+      Sin config/exports/ops.yaml todavía. El objeto real de Enablon se
+      llama "JSO" (ver config/modules.yaml), no "OPS" -- no se asume ese
+      nombre como canonical_name sin confirmarlo.
+
+  inspections:
+    display_name: "Inspection Management"
+    enabled: false
+    status: planned
+    source_system: prevencion
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: >
+      Sin config/exports/inspections.yaml todavía. Cubre varios objetos
+      reales (Inspections, Observations, Inspection_Data parcial -- ver
+      config/modules.yaml), por eso no se declara un único canonical_name.
+
+  corrective_actions:
+    display_name: "Action Plans (transversal)"
+    enabled: false
+    status: planned
+    source_system: prevencion
+    canonical_name: Action_Plans
+    artifacts:
+      etl: {status: missing}
+      template_csv: {status: missing, contract_role: platform}
+      operational_csv: {status: missing, contract_role: project}
+      sql: {status: missing}
+      mapping: {status: missing}
+    notes: >
+      Sin config/exports/corrective_actions.yaml todavía. canonical_name
+      confirmado por config/modules.yaml (csv_enablon_real:
+      "Action_Plans-*.csv"). Módulo transversal, alimentado por
+      ITP_Acciones_correctoras clasificada por idorigenac (CLAUDE.md).

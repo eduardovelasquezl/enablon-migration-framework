@@ -1,5 +1,8 @@
 # Declaración de categorías del workspace externo de datos (Sprint 7 —
-# Workspace Separation, ver docs/01-architecture/external-data-workspace.md).
+# Workspace Separation, ver docs/01-architecture/external-data-workspace.md;
+# categorías csv_enablon_template/csv_enablon_operational añadidas en
+# Sprint 8.4 para el Workspace Manifest, ver
+# docs/01-architecture/workspace-manifest.md).
 #
 # Este fichero NUNCA contiene la ruta real del workspace -- solo el nombre
 # de la variable de entorno que la resuelve (`root_env`) y la estructura
@@ -13,7 +16,9 @@ projects:
     base: projects/moeve
     categories:
       etl: ETL
-      csv_enablon: CSV_Enablon
+      csv_enablon: CSV_Enablon  # legacy (Sprint 7) -- Deprecated, ver external-data-workspace.md § 24. No usado por artefactos nuevos.
+      csv_enablon_template: CSV_Enablon_Template
+      csv_enablon_operational: CSV_Enablon_Operational
       mappings: Mappings
       catalogs: Catalogs
       errors: Errors

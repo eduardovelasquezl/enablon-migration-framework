@@ -32,6 +32,11 @@ from src.export.prototype.drills.pipeline import run as run_drills_export
 from src.query.catalog import DRILLS_FILTER_CATALOG
 from src.query.models import QueryEngineError
 from src.query.validator import compile_filter_tokens
+from src.core.workspace_manifest import (
+    WorkspaceManifestError,
+    WorkspaceManifestLoader,
+    validate_manifest,
+)
 
 _ALLOWED_OUTPUT_ROOT = PROJECT_ROOT / "outputs"
 _AUDIENCES = ("internal", "client", "both")
@@ -349,6 +354,54 @@ def run_pipeline(
 
     if result.status == "failed":
         sys.exit(1)
+
+
+@cli.group()
+def workspace() -> None:
+    """Comandos sobre el Workspace Manifest (Sprint 8.4). Nunca accede a
+    SQL Server, nunca abre un archivo referenciado por el manifest --
+    solo lee el propio YAML del manifest y valida su forma/reglas."""
+
+
+@workspace.command("validate")
+@click.option(
+    "--manifest", "manifest_path", type=str, required=True,
+    help="Ruta al fichero workspace.yaml a validar (p. ej. examples/workspace/workspace.example.yaml).",
+)
+def workspace_validate(manifest_path: str) -> None:
+    """Carga y valida un Workspace Manifest: forma estructural
+    (WorkspaceManifestLoader) + reglas de negocio (validate_manifest).
+
+    Exit code 0 si es válido y sin violaciones; distinto de 0 en caso
+    contrario. No lee ningún dato real referenciado por el manifest, no
+    ejecuta SQL, no modifica nada.
+    """
+    path = Path(manifest_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+
+    click.echo("=== Workspace Manifest -- validate ===")
+    click.echo(f"  manifest: {path}")
+    click.echo("")
+
+    try:
+        manifest = WorkspaceManifestLoader.load_from_path(path)
+    except WorkspaceManifestError as exc:
+        click.echo(f"ERROR de esquema: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Proyecto:  {manifest.project.id} ({manifest.project.display_name})")
+    click.echo(f"Módulos:   {', '.join(manifest.module_ids())}")
+    click.echo("")
+
+    violations = validate_manifest(manifest)
+    if violations:
+        click.echo(f"Violaciones encontradas ({len(violations)}):", err=True)
+        for violation in violations:
+            click.echo(f"  - {violation}", err=True)
+        sys.exit(1)
+
+    click.echo("Resultado: OK -- sin violaciones.")
 
 
 if __name__ == "__main__":

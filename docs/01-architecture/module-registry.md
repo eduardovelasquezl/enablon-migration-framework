@@ -292,13 +292,15 @@ Registry ya admite cualquier `object_id` sin código nuevo)".
 
 ## 20. Deuda técnica
 
-- `ensure_module_runnable()` (composición con `WorkspaceManifest`) existe
-  y está testeada, pero no está todavía conectada a ningún comando CLI
-  real -- `run` hoy solo consulta `ModuleRegistry`, no un
-  `WorkspaceManifest`. Conectar `--manifest` a `run` es una extensión
-  aditiva de bajo riesgo, aplazada por no tener un caso de uso CLI real
-  todavía (mismo principio que `resource-resolver.md` § 19 aplicó a
-  `--execution-id`).
+- `ensure_module_runnable()` (composición con `WorkspaceManifest`) tiene
+  desde Sprint 8.7 su primer llamador real:
+  `WorkspaceReadinessValidator._run_gate()` (ver
+  `docs/01-architecture/workspace-readiness-validator.md` § 12), que la usa
+  para el paso "¿el proyecto lo declara y está habilitado?". `run` sigue sin
+  aceptar `--manifest` -- solo consulta `ModuleRegistry` -- conectarlo sigue
+  siendo una extensión aditiva de bajo riesgo, aplazada por no tener un caso
+  de uso CLI real todavía (mismo principio que `resource-resolver.md` § 19
+  aplicó a `--execution-id`).
 - La firma de `PipelineFactory` no recibe `WorkspaceManifest`/
   `ResourceResolver` -- ampliarla espera un segundo módulo real que lo
   necesite (§ 12).

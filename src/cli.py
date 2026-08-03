@@ -7,6 +7,7 @@ ver `docs/specifications/v1.0/export/closing_recommendation.md`.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -40,6 +41,13 @@ from src.core.resource_resolver import (
     ResourceRequest,
     ResourceResolutionError,
     ResourceResolver,
+)
+from src.core.readiness_validator import (
+    ReadinessOperation,
+    ReadinessRequest,
+    ReadinessStatus,
+    ReadinessValidatorError,
+    WorkspaceReadinessValidator,
 )
 from src.db import sql_execution_guard
 
@@ -563,6 +571,145 @@ def workspace_resolve(
 
     if require_exists and not resolved.exists:
         sys.exit(1)
+
+
+_READINESS_EXIT_CODES = {
+    ReadinessStatus.READY: 0,
+    ReadinessStatus.READY_WITH_WARNINGS: 1,
+    ReadinessStatus.BLOCKED: 2,
+}
+
+
+def _issue_to_dict(issue) -> dict:
+    return {
+        "code": issue.code,
+        "severity": issue.severity,
+        "message": issue.message,
+        "project_id": issue.project_id,
+        "module_id": issue.module_id,
+        "operation": issue.operation,
+        "artifact_type": issue.artifact_type,
+        "declared_path": issue.declared_path,
+        "required": issue.required,
+        "source_component": issue.source_component,
+        "remediation": issue.remediation,
+        "reference": issue.reference,
+    }
+
+
+def _resolved_resource_to_dict(resolved) -> dict:
+    return {
+        "artifact_type": resolved.artifact_type,
+        "declared_path": resolved.declared_path,
+        "resolved_path": str(resolved.resolved_path) if resolved.resolved_path else None,
+        "artifact_status": resolved.artifact_status,
+        "exists": resolved.exists,
+        "generated": resolved.generated,
+        "contract_role": resolved.contract_role,
+    }
+
+
+def _assessment_to_dict(assessment) -> dict:
+    return {
+        "assessment_id": assessment.assessment_id,
+        "timestamp": assessment.timestamp.isoformat(),
+        "project_id": assessment.project_id,
+        "module_id": assessment.module_id,
+        "operation": assessment.operation,
+        "status": assessment.status,
+        "checks": list(assessment.checks),
+        "issues": [_issue_to_dict(i) for i in assessment.issues],
+        "required_artifacts": list(assessment.required_artifacts),
+        "optional_artifacts": list(assessment.optional_artifacts),
+        "resolved_resources": [_resolved_resource_to_dict(r) for r in assessment.resolved_resources],
+        "missing_resources": list(assessment.missing_resources),
+        "generated_resources": list(assessment.generated_resources),
+        "summary": assessment.summary,
+        "recommended_next_action": assessment.recommended_next_action,
+    }
+
+
+@workspace.command("readiness")
+@click.option(
+    "--manifest", "manifest_path", type=str, required=True,
+    help="Ruta al fichero workspace.yaml (p. ej. examples/workspace/workspace.example.yaml).",
+)
+@click.option("--module", "module_id", type=str, required=True, help="module_id o alias declarado/registrado.")
+@click.option(
+    "--operation", type=click.Choice(sorted(ReadinessOperation.ALL)), required=True,
+    help="Operación a evaluar: sample, full, comparison, evidence, validation o export.",
+)
+@click.option(
+    "--require-files", is_flag=True, default=False,
+    help="Comprueba también existencia física de los recursos resolubles (nunca abre su contenido).",
+)
+@click.option(
+    "--format", "output_format", type=click.Choice(["text", "json"]), default="text", show_default=True,
+    help="Formato de salida -- 'json' para consumo automatizado.",
+)
+@click.option(
+    "--strict", is_flag=True, default=False,
+    help="Trata cualquier advertencia como bloqueo (útil para gates de CI/automatización).",
+)
+def workspace_readiness(
+    manifest_path: str, module_id: str, operation: str,
+    require_files: bool, output_format: str, strict: bool,
+) -> None:
+    """Evalúa si un módulo/operación está listo para EMPEZAR -- nunca
+    ejecuta nada, nunca abre SQL, nunca requiere --allow-real-sql.
+
+    Compone `ModuleRegistry` + `WorkspaceManifest` + `ResourceResolver`
+    (Sprint 8.7, ver docs/01-architecture/workspace-readiness-validator.md).
+    Exit codes (distintos del resto de la CLI, documentado deliberadamente):
+    0=READY, 1=READY_WITH_WARNINGS, 2=BLOCKED, 3=error técnico/config.
+    """
+    path = Path(manifest_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+
+    try:
+        manifest = WorkspaceManifestLoader.load_from_path(path)
+    except WorkspaceManifestError as exc:
+        click.echo(f"ERROR de esquema: {exc}", err=True)
+        sys.exit(3)
+
+    registry = build_default_module_registry()
+    resolver = ResourceResolver(manifest, get_default_data_workspace())
+
+    try:
+        request = ReadinessRequest(
+            project_id=manifest.project.id, module_id=module_id, operation=operation,
+            manifest=manifest, registry=registry, resolver=resolver,
+            require_physical_files=require_files, strict=strict,
+        )
+        assessment = WorkspaceReadinessValidator().assess(request)
+    except ReadinessValidatorError as exc:
+        click.echo(f"ERROR de configuración ({type(exc).__name__}): {exc}", err=True)
+        sys.exit(3)
+
+    if output_format == "json":
+        click.echo(json.dumps(_assessment_to_dict(assessment), indent=2, ensure_ascii=False))
+        sys.exit(_READINESS_EXIT_CODES[assessment.status])
+
+    click.echo("=== Workspace Readiness ===")
+    click.echo(f"Project:            {assessment.project_id}")
+    click.echo(f"Module:             {assessment.module_id}")
+    click.echo(f"Operation:          {assessment.operation}")
+    click.echo(f"Status:             {assessment.status}")
+    click.echo("")
+    click.echo(f"Blockers ({len(assessment.blockers)}):")
+    for issue in assessment.blockers:
+        click.echo(f"  - [{issue.code}] {issue.message}")
+    click.echo(f"Warnings ({len(assessment.warnings)}):")
+    for issue in assessment.warnings:
+        click.echo(f"  - [{issue.code}] {issue.message}")
+    click.echo("")
+    click.echo(f"Required resources: {', '.join(assessment.required_artifacts) or '(ninguno)'}")
+    click.echo(f"Missing resources:  {', '.join(assessment.missing_resources) or '(ninguno)'}")
+    click.echo("")
+    click.echo(f"Next action:        {assessment.recommended_next_action}")
+
+    sys.exit(_READINESS_EXIT_CODES[assessment.status])
 
 
 @cli.group()

@@ -618,3 +618,12 @@ genérico (`src/core/resource_resolver.py`). La categoría legacy
 ahí, no se retira el YAML). Ver `docs/01-architecture/resource-resolver.md`
 § 15 para el detalle completo y la nota abierta sobre la clasificación de
 `Drills-22072026-41.csv`.
+
+## 24. Sprint 8.7 — consumido por el Workspace Readiness Validator
+
+`DataWorkspace` sigue sin cambios de comportamiento. El nuevo
+`WorkspaceReadinessValidator` (`src/core/readiness_validator.py`, ver
+`docs/01-architecture/workspace-readiness-validator.md`) lo usa
+transitivamente, a través de `ResourceResolver`, para comprobar existencia
+física opcional (`require_physical_files=True`) -- nunca crea directorios ni
+archivos, mismas garantías ya vigentes en este documento.

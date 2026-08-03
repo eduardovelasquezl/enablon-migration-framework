@@ -1,0 +1,295 @@
+INFORME -- SPRINT 8.7: WORKSPACE READINESS VALIDATOR
+=====================================================
+
+Fecha: 2026-08-03
+Rama: feature/drills-filtered-exports
+HEAD de referencia (previo a este sprint): 92f4120
+Estado de referencia: 647 passed, 7 skipped
+
+1. RESUMEN EJECUTIVO
+---------------------
+Se implemento un validador generico de preparacion operativa
+(WorkspaceReadinessValidator, src/core/readiness_validator.py) que compone
+ModuleRegistry + WorkspaceManifest + ResourceResolver (y lee, sin mutar, el
+SQL Execution Guard) para responder, antes de intentar cualquier operacion:
+esta listo <modulo> en <proyecto> para <operacion>, y si no, que falta
+exactamente y eso bloquea o solo advierte.
+
+Estados finales: READY / READY_WITH_WARNINGS / BLOCKED -- nunca describen
+el resultado de una migracion, solo la preparacion previa. Se anadio el
+comando aditivo "python main.py workspace readiness", sin tocar ningun
+comando existente. La suite paso de 647/7 a 714 passed / 7 skipped (67
+tests nuevos, cero regresiones). No se ejecuto SQL real en ningun momento
+de este sprint; no se hizo commit.
+
+2. ESTADO INICIAL (FASE 0, VERIFICACION)
+------------------------------------------
+- Branch: feature/drills-filtered-exports. Remoto: origin ->
+  enablon-migration-framework. HEAD: 92f4120.
+- git diff --check: limpio (sin problemas de espacio en blanco).
+- Suite inicial: 647 passed, 7 skipped -- coincide exactamente con la
+  referencia del encargo.
+- .claude/settings.local.json: sin cambios manuales; los cambios
+  automaticos de permisos acumulados durante la sesion se restauraron con
+  "git restore" antes de cerrar el sprint.
+- Cinco archivos sin trackear de Sprint 8.1 (drills-csv-contract.md,
+  knowledge-coverage-matrix.md, knowledge-traceability-matrix.md,
+  Informe-Knowledge-Audit-EMF.md/.txt) identificados como FUERA DE ALCANCE
+  -- no se tocaron, no se incluyen en este commit propuesto.
+- No se detectaron otros cambios inesperados. SQL Execution Guard activo
+  por defecto (verificado sin abrir conexion real).
+
+3. INVENTARIO DE REQUISITOS (FASE 1)
+--------------------------------------
+Hallazgo central: existian dos vocabularios de "obligatorio" sin relacion
+programatica entre ellos, y ninguno de los dos se aplicaba en runtime.
+
+- ModuleDefinition.required_artifact_types (module_registry.py:231): set
+  plano, sin distinguir sample/full/comparison. Validado al construir,
+  nunca leido para bloquear nada. Decision: senal de alerta no bloqueante
+  (ARTIFACT_SOFTWARE_EXPECTS_UNDECLARED, WARNING).
+- ArtifactSpec.required_for_sample/full/comparison (workspace_manifest.py:
+  151-153): booleano por artefacto, por operacion. Solo comprobado por un
+  guard de esquema al cargar. Decision: UNICA fuente real de bloqueo por
+  operacion (aplicada por primera vez en este sprint).
+- ensure_module_runnable() (module_registry.py:433-473): totalmente
+  testeada, sin ningun llamador real (deuda documentada en
+  module-registry.md Sec 20). Decision: primer llamador real es
+  WorkspaceReadinessValidator._run_gate().
+- Drills sql/mapping: declarados required_artifact_types pero resueltos
+  fuera de ResourceResolver (config/exports/drills.yaml,
+  inputs/entity_catalog/). El manifest real los declara status=present,
+  path=null, source=git:.... required=True contra el resolver habria
+  lanzado ArtifactMissingError incorrectamente. Decision: el validador
+  nunca llama a resolve() con required=True; decide severidad el mismo a
+  partir de status.
+- ContractsSpec.project_artifact vs. ArtifactSpec.required_for_comparison:
+  podian divergir sin ninguna validacion. Decision: ContractCheck emite
+  CONTRACT_ARTIFACT_NOT_MARKED_REQUIRED (WARNING) si divergen.
+
+4. PRECEDENCIA FIJADA
+-----------------------
+ModuleRegistry (es capaz el software?) -> WorkspaceManifest (lo declara/
+exige el proyecto para esta operacion?) -> ResourceResolver (se resuelve/
+existe?) -> WorkspaceReadinessValidator agrega. Ningun nivel reimplementa
+al anterior.
+
+Decision de diseno explicita (desviacion documentada del boceto literal de
+la Fase 6 del encargo): NO se introdujo un bloque operation_requirements:
+nuevo en el manifest. ArtifactSpec.required_for_sample/full/comparison ya
+tenia esa granularidad -- un segundo mecanismo paralelo habria violado "no
+duplica sus responsabilidades" (criterio de aceptacion #5).
+
+5. ARQUITECTURA
+-----------------
+Ver docs/01-architecture/workspace-readiness-validator.md Sec 4. Resumen:
+ReadinessRequest entra, _run_gate() resuelve ModuleImplementationCheck +
+ProjectModuleDeclarationCheck (cortan el resto si fallan), despues siete
+checks se ejecutan siempre en orden fijo (CapabilityCheck,
+ArtifactDeclarationCheck, ArtifactStatusCheck, ResourceResolutionCheck,
+PhysicalExistenceCheck, ContractCheck, SecurityCheck), acumulando
+ReadinessIssue; el resultado se agrega en un ReadinessAssessment con
+deduplicacion por (code, artifact_type).
+
+6. MODELO PYTHON
+------------------
+src/core/readiness_validator.py: ReadinessOperation, ReadinessStatus,
+ReadinessSeverity (vocabularios cerrados); ReadinessIssue, ReadinessRequest,
+ReadinessAssessment (dataclasses frozen); nueve clases de check;
+WorkspaceReadinessValidator con un unico metodo publico assess(). Sin
+estado global (ADR-010). ~700 lineas, sin ningun "if module_id == drills"
+(verificado por test).
+
+7. OPERACIONES EVALUABLES
+----------------------------
+sample, full, comparison, evidence, validation, export -- ver tabla
+completa en workspace-readiness-validator.md Sec 6.
+
+8. CHECKS IMPLEMENTADOS
+-------------------------
+ModuleImplementationCheck (distingue MODULE_UNKNOWN de
+MODULE_NOT_EXECUTABLE), ProjectModuleDeclarationCheck, CapabilityCheck,
+ArtifactDeclarationCheck, ArtifactStatusCheck, ResourceResolutionCheck,
+PhysicalExistenceCheck, ContractCheck, SecurityCheck.
+
+9. POLITICA POR OPERACION
+----------------------------
+ETL nunca bloquea; Template CSV no bloquea sample; Operational CSV no
+bloquea sample pero si comparison cuando es el Project Contract; un output
+generado nunca se exige pre-existente; un mapping git-tracked sin path no
+bloquea (se acepta la declaracion, INFO).
+
+10. RESULTADO AGREGADO
+-------------------------
+blockers -> BLOCKED; sin blockers pero con warnings -> READY_WITH_WARNINGS
+(o BLOCKED si strict=True); sin issues -> READY. Orden de checks
+deterministico; issues deduplicados por (code, artifact_type).
+
+11. DRILLS
+-----------
+Verificado en tests/test_readiness_validator_drills_integration.py (11
+tests) con build_default_module_registry() real: sample sin comparacion ->
+READY/READY_WITH_WARNINGS, nunca bloqueado por ETL/Template/Operational
+ausentes; comparison bloquea sin operational_csv; full evalua sin pedir
+autorizacion SQL; modulo deshabilitado -> BLOCKED; modulo no registrado ->
+MODULE_UNKNOWN, distinto de cualquier ARTIFACT_*.
+
+12. CLI
+--------
+python main.py workspace readiness --manifest <path> --module <id>
+--operation <op> [--require-files] [--format text|json] [--strict]
+Exit codes: 0=READY, 1=READY_WITH_WARNINGS, 2=BLOCKED, 3=error tecnico.
+Nunca requiere ni acepta --allow-real-sql. Comandos existentes verificados
+sin cambios de comportamiento.
+
+13. SQL EXECUTION GUARD
+--------------------------
+El validador nunca llama a grant()/revoke()/get_engine() -- solo lee
+current_authorization() para una nota informativa. Verificado por analisis
+AST del fichero fuente y por test de estado antes/despues de assess().
+
+14. TESTS CREADOS
+-------------------
+- tests/test_readiness_validator.py: 42 tests unitarios.
+- tests/test_readiness_validator_drills_integration.py: 11 tests de
+  integracion con Drills real.
+- tests/test_cli_workspace_readiness.py: 14 tests de CLI.
+Total: 67 tests nuevos.
+
+15. RESULTADOS
+----------------
+714 passed, 7 skipped en ~21s.
+647 (referencia) + 67 (nuevos) = 714. Cero regresiones.
+
+16. COMPATIBILIDAD CON CRITERIOS DE ACEPTACION
+--------------------------------------------------
+1. Existe WorkspaceReadinessValidator generico: SI
+2. Usa ModuleRegistry: SI
+3. Usa WorkspaceManifest: SI
+4. Usa ResourceResolver: SI
+5. No duplica sus responsabilidades: SI
+6. No contiene logica especifica de Drills en el Core: SI (verificado)
+7. Distingue READY/READY_WITH_WARNINGS/BLOCKED: SI
+8. Evalua sample, comparison y full: SI (+evidence/validation/export)
+9. ETL no bloquea si no es dependencia runtime: SI
+10. Template no bloquea sample si no se consume: SI
+11. Operational CSV bloquea comparison cuando es Project Contract: SI
+12. Output generado no debe existir previamente: SI
+13. No abre SQL: SI
+14. No modifica SQL Execution Guard: SI
+15. CLI aditiva con exit codes definidos: SI
+16. Tests nuevos en verde: SI (67/67)
+17. Suite previa continua pasando: SI (647/647)
+18. No accede a datos reales: SI
+19. Documentacion e informes generados: SI
+20. No hace commit sin aprobacion: SI (pendiente de aprobacion)
+
+17. ARCHIVOS CREADOS
+-----------------------
+- src/core/readiness_validator.py
+- tests/test_readiness_validator.py
+- tests/test_readiness_validator_drills_integration.py
+- tests/test_cli_workspace_readiness.py
+- docs/01-architecture/workspace-readiness-validator.md
+- reports/executions/2026-08-03/Informe-Workspace-Readiness-Validator-EMF.md
+- reports/executions/2026-08-03/Informe-Workspace-Readiness-Validator-EMF.txt
+
+18. ARCHIVOS MODIFICADOS
+---------------------------
+- src/cli.py (nuevo subcomando workspace readiness, aditivo)
+- docs/01-architecture/module-registry.md (Sec 20 actualizada)
+- docs/01-architecture/workspace-manifest.md (tabla ArtifactSpec corregida)
+- docs/01-architecture/resource-resolver.md (Sec 19.2 nueva)
+- docs/01-architecture/external-data-workspace.md (Sec 24 nueva)
+- docs/07-developer-guide/getting-started.md (fila nueva en tabla de estado)
+- docs/07-developer-guide/drills-real-data-inventory.md (Sec 8 actualizada)
+
+19. RIESGOS
+-------------
+- Depende de que el manifest declare required_for_sample/full/comparison
+  correctamente -- un manifest mal declarado produciria un falso READY.
+  Mitigado por "workspace validate" como paso previo recomendado.
+- "validation" reutilizando required_for_sample es una aproximacion
+  documentada, no una regla de negocio confirmada por el cliente.
+
+20. DEUDA TECNICA
+--------------------
+Ver workspace-readiness-validator.md Sec 21. Punto verificado
+explicitamente para esta autorizacion de commit (relacion entre
+ModuleDefinition.required_artifact_types/optional_artifact_types y
+ArtifactSpec.required_for_sample/full/comparison, ver Sec 11.1 del doc de
+arquitectura):
+
+- Fuente efectiva de obligatoriedad por operacion: unicamente
+  ArtifactSpec.required_for_sample/full/comparison (nivel manifest/
+  proyecto). Es la unica que puede producir un BLOCKER.
+- ModuleDefinition.required_artifact_types (nivel software): nunca
+  bloquea, solo emite WARNING (ARTIFACT_SOFTWARE_EXPECTS_UNDECLARED) si el
+  proyecto no declara en absoluto un kind que el software espera para
+  sample/full. No contradice ni sobrescribe los requisitos por operacion.
+- ModuleDefinition.optional_artifact_types: completamente redundante hoy --
+  ningun check de readiness_validator.py lo lee (verificado por grep); el
+  validador calcula sus propios "opcionales" por operacion directamente del
+  manifest. Se mantiene como metadato general del software (usado solo por
+  "modules show" y por la validacion de no-solape), documentado como
+  candidato a simplificar/retirar en un futuro sprint -- no se retira en
+  este sprint por no formar parte del alcance pedido.
+- Resto de la deuda ya documentada sin cambios: reutilizacion de
+  required_for_sample para validation; export/evidence sin artefactos
+  obligatorios modelados; credenciales/conectividad SQL siguen sin
+  modelarse como artefacto.
+
+21. SIGUIENTE PASO
+---------------------
+Conectar --manifest a "python main.py run" para que tambien pase por
+ensure_module_runnable()/el nuevo validador antes de ejecutar (deuda ya
+senalada en module-registry.md Sec 20, sin resolver en este sprint).
+
+22. PROPUESTA DE COMMIT
+--------------------------
+feat(core): add workspace readiness validator
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+
+Excluye explicitamente los cinco archivos de Knowledge Audit de Sprint 8.1
+(fuera de alcance, sin tocar).
+
+23. GIT DIFF --CHECK
+-----------------------
+(limpio -- sin advertencias de espacio en blanco)
+
+24. GIT STATUS --SHORT
+-------------------------
+ M docs/01-architecture/external-data-workspace.md
+ M docs/01-architecture/module-registry.md
+ M docs/01-architecture/resource-resolver.md
+ M docs/01-architecture/workspace-manifest.md
+ M docs/07-developer-guide/drills-real-data-inventory.md
+ M docs/07-developer-guide/getting-started.md
+ M src/cli.py
+?? docs/01-architecture/drills-csv-contract.md          (fuera de alcance)
+?? docs/01-architecture/knowledge-coverage-matrix.md    (fuera de alcance)
+?? docs/01-architecture/knowledge-traceability-matrix.md (fuera de alcance)
+?? docs/01-architecture/workspace-readiness-validator.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.md  (fuera de alcance)
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.txt (fuera de alcance)
+?? reports/executions/2026-08-03/
+?? src/core/readiness_validator.py
+?? tests/test_cli_workspace_readiness.py
+?? tests/test_readiness_validator.py
+?? tests/test_readiness_validator_drills_integration.py
+
+25. GIT DIFF --STAT
+----------------------
+ docs/01-architecture/external-data-workspace.md         |   9 ++
+ docs/01-architecture/module-registry.md                 |  16 ++-
+ docs/01-architecture/resource-resolver.md                |  14 ++
+ docs/01-architecture/workspace-manifest.md                |   6 +-
+ docs/07-developer-guide/drills-real-data-inventory.md      |  18 +++
+ docs/07-developer-guide/getting-started.md                 |   1 +
+ src/cli.py                                                 | 147 +++++++++++
+ 7 files changed, 210 insertions(+), 1 deletion(-)
+
+(.claude/settings.local.json, modificado automaticamente durante la sesion
+por el registro de permisos, se restauro con git restore antes de este
+corte -- no aparece en el diff final.)

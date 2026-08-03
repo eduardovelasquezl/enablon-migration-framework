@@ -336,6 +336,20 @@ documento, reutilizado, nunca duplicado) -- pero no los resuelven: seguir
 resolviéndolos de verdad sigue siendo trabajo exclusivo de
 `ResourceResolver`. Ver `docs/01-architecture/module-registry.md` § 5.
 
+## 19.2 Sprint 8.7 — Workspace Readiness Validator
+
+`ResourceResolver` sigue sin cambios de comportamiento. Tiene un nuevo
+consumidor genérico, `WorkspaceReadinessValidator`
+(`src/core/readiness_validator.py`, ver
+`docs/01-architecture/workspace-readiness-validator.md`), que llama a
+`resolve()` siempre con `required=False` -- decide la severidad
+(bloqueo/advertencia) él mismo a partir de `ArtifactStatus`, nunca deja que
+una excepción del resolver la decida. Esto evita un caso real detectado en
+la Fase 1 de ese sprint: un artefacto `status=present`/`path=None`
+(git-tracked, resuelto vía `source: "git:..."`, como `sql`/`mapping` de
+Drills) haría que `required=True` lanzara `ArtifactMissingError` de forma
+incorrecta si se usara tal cual.
+
 ## 20. Criterios de aceptación
 
 Ver `reports/executions/2026-07-28/Informe-Resource-Resolver-EMF.md` § 14

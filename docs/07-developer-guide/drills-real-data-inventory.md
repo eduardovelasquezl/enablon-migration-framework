@@ -184,3 +184,21 @@ Drills están, en su mayoría, ya disponibles — el único punto no
 verificado en este sprint es la conectividad de red real a SQL Server y
 la vigencia de las credenciales (ninguna de las dos se comprobó, por
 estar fuera de alcance de un sprint que no ejecuta SQL).
+
+**Actualización Sprint 8.7**: de estos 4 "Imprescindible", 2 (query SQL,
+catálogo de entidad) son hoy comprobables automáticamente vía `python
+main.py workspace readiness --module drills --operation sample`
+(`WorkspaceReadinessValidator`, ver
+`docs/01-architecture/workspace-readiness-validator.md`) — declarados
+`status: present`/`path: null` en el manifest (git-tracked, fuera del
+workspace externo), el validador los acepta como satisfechos sin poder
+comprobar su existencia física (`ARTIFACT_PRESENT_NOT_PATH_RESOLVABLE`,
+informativo). Los otros 2 (credenciales `.env`, conectividad de red real a
+SQL Server) siguen **sin modelarse como artefacto** — no encajan en
+`ARTIFACT_KINDS` ni en ningún `ModuleCapability` — y se surfacean solo como
+nota informativa del `SecurityCheck` del validador (nunca como bloqueo de
+readiness, ni como autorización: la disponibilidad de credenciales nunca
+implica autorización de uso, CLAUDE.md). El CSV Operacional (Recomendable)
+y el resto (Solo auditoría/histórico) se comportan exactamente como
+predice esta tabla: nunca bloquean `sample`, sí bloquea `operational_csv`
+ausente si se pide `--operation comparison`.

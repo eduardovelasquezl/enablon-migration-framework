@@ -181,9 +181,9 @@ Nueve `kind` cerrados (`ARTIFACT_KINDS`): `etl`, `template_csv`,
 | Campo | Obligatorio | Descripción |
 |---|---|---|
 | `path` | No | Relativo a la carpeta de categoría (nunca absoluto, nunca con `..` — validado al cargar). `null`/ausente = todavía no se conoce/recuperó. |
-| `required_for_sample` | No (default `false`) | Bloquea un `sample` si falta. |
-| `required_for_full` | No (default `false`) | Bloquea un `full` si falta. |
-| `required_for_comparison` | No (default `false`) | Necesario solo para generar un reporte de comparación (nunca bloquea sample/full). |
+| `required_for_sample` | No (default `false`) | Declara el artefacto obligatorio para `sample`. Hasta Sprint 8.7 este flag era puramente declarativo (solo comprobado al cargar el manifest, nunca en runtime) -- desde Sprint 8.7, `WorkspaceReadinessValidator` (ver `docs/01-architecture/workspace-readiness-validator.md`) es quien realmente lo aplica y bloquea si falta. |
+| `required_for_full` | No (default `false`) | Igual que arriba, para `full`. |
+| `required_for_comparison` | No (default `false`) | Necesario solo para generar un reporte de comparación (nunca bloquea sample/full) -- aplicado por `WorkspaceReadinessValidator` para la operación `comparison`. |
 | `status` | No (default `missing`) | Uno de `ArtifactStatus.ALL` (§ 13). |
 | `description` | No | Texto libre. |
 | `contract_role` | No | `platform` \| `project` \| `emf` — normalmente coincide con lo declarado en `contracts` (§ 11), pero se deja como anotación libre del propio artefacto también. |

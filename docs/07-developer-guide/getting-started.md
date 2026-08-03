@@ -71,6 +71,7 @@ para el procedimiento de recuperación tras el incidente de Sprint 6.
 | Workspace Manifest | `src/core/workspace_manifest.py` | Sí — genérico, un único proyecto real declarado (`examples/workspace/`) |
 | Resource Resolver | `src/core/resource_resolver.py` | Sí — genérico, un único consumidor real (Drills) |
 | Module Registry | `src/core/module_registry.py` + `src/bootstrap/` | Sí — genérico, un único módulo real registrado (Drills, ver `module-registry.md`) |
+| Workspace Readiness Validator | `src/core/readiness_validator.py` (CLI: `workspace readiness`) | Sí — genérico, compone ModuleRegistry+WorkspaceManifest+ResourceResolver, ver `workspace-readiness-validator.md` |
 
 Si tu tarea es "añadir algo nuevo al framework", parte de este estado real,
 no de la arquitectura objetivo del Blueprint — la arquitectura objetivo

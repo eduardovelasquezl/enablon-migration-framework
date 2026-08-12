@@ -1,0 +1,385 @@
+INFORME DE EJECUCION - SPRINT 8.9: C003 KNOWLEDGE ADOPTION & ACTION PLANS NATIVE DESIGN
+================================================================================
+
+Fecha: 2026-08-12
+Rama: feature/drills-filtered-exports
+Alcance: Incorporacion de conocimiento funcional descubierto en C003
+(C:\Users\EduardoVelasquez\Desktop\C003-ActionPlans-Tool-v3\, herramienta
+nativa que reemplaza el ETL Excel de Action Plans) al modelo de
+conocimiento del EMF, y diseno arquitectonico del futuro adaptador AP
+nativo. C003 no se integra, no se ejecuta, no se copia su runtime. Sin
+ejecucion de SQL Server. Sin commit - Sprint 8.8 y 8.8.1 siguen
+pendientes de commit.
+
+--------------------------------------------------------------------------------
+1. RESUMEN EJECUTIVO
+--------------------------------------------------------------------------------
+
+C003 es una reimplementacion nativa (T-SQL + PowerShell + Python, sin
+Excel salvo una extraccion puntual y unica de configuracion) del proceso
+de Action Plans, construida para corregir defectos ya conocidos del ETL
+Excel. Se inspecciono en solo lectura (codigo fuente, 1 manifest.json
+real de estructura, ningun dato de fila de runs/) y se reconstruyeron 30
+reglas de mapeo con evidencia textual exacta (archivo + linea). Se
+reconciliaron contra el conocimiento ya acumulado en Sprint 8.8/8.8.1: 1
+item de backlog se cerro (P2-06), 3 reglas coinciden con evidencia ya
+validada, y el resto se incorpora como conocimiento nuevo sin
+promocionarse a CURRENT_VERIFIED sin mas verificacion.
+
+Se diseno (no implemento) el futuro Adaptador AP nativo:
+docs/01-architecture/action-plans-native-design.md - identidad global de
+AP, AP como objeto transversal, politica de relaciones de padre,
+reconciliacion del Project Contract (69 vs. 31-33 columnas), diseno del
+MappingSet, PipelineStages propuestas, y requisitos minimos de una UI
+futura. Se abrieron 5 nuevos items de backlog de diseno (P1-11 a P1-13,
+P2-09, P2-10).
+
+Se resolvio finalmente el estado de los 5 documentos de Sprint 8.1
+(seccion 21 de este informe) - ninguno se elimina sin autorizacion
+explicita.
+
+--------------------------------------------------------------------------------
+2. REGLAS C003
+--------------------------------------------------------------------------------
+
+30 reglas reconstruidas por lectura estatica de codigo real (sql/*.sql,
+Run-Pilot.ps1, Run-ActionPlans.ps1, Extract-*.py), con archivo y linea
+citados para cada una. Tabla completa en
+docs/07-developer-guide/c003-knowledge-adoption.md seccion 2. NOTA
+IMPORTANTE: el encargo asumia la existencia de un assessment previo
+("Codex") que ya habria identificado estas 30 reglas - ese documento no
+estaba disponible en esta sesion; el inventario es una reconstruccion
+propia e independiente, no un cotejo contra ese assessment.
+
+Estados iniciales usados (nunca CURRENT_VERIFIED solo por ejecutarse en
+C003): 3 MATCHES_CURRENT_EVIDENCE, ~15 HISTORICAL_VERIFIED/NEW_KNOWLEDGE
+con evidencia de codigo fuerte, 1 CONFLICT (generacion HTML de adjuntos
+sin escapar), el resto NEW_KNOWLEDGE sin verificacion cruzada todavia.
+
+--------------------------------------------------------------------------------
+3. RECONCILIACION
+--------------------------------------------------------------------------------
+
+Tabla completa en c003-knowledge-adoption.md seccion 3. Resultado mas
+relevante: cfg.ActionPlanFlowOrigin (C003) da el mapeo exacto
+FlowCode+idorigenac -> Sources/columna de enlace de padre para los 8
+flujos de AP - cierra el backlog P2-06 de Sprint 8.8 ("mapeo exacto a
+idorigenac no confirmado"), coincide con config/modules.yaml en los IDs
+ya conocidos y anade HAZOPS=6, no documentado antes.
+
+--------------------------------------------------------------------------------
+4. CONOCIMIENTO NUEVO
+--------------------------------------------------------------------------------
+
+- Namespace inconsistente de CS_HistoricalAPID entre el piloto ITPII2
+  (ITPII2.<id>) y los 8 flujos genericos (sin prefijo).
+- Reglas de Status/LevelNo por finalizacion (FechaRealFin).
+- Concatenacion etiquetada de DetailedDescription.
+- Formato de fecha exacto dd/MM/yyyy H:mm (sin cero a la izquierda en la
+  hora).
+- Regla de desempate para eventos duplicados (Id numerico mas alto gana).
+- Resolucion de Owner via email (ITP_USUARIOS_map x UsersEnablon_PROD).
+- Hash de fila (SHA2_256) para deteccion de cambios, por fila.
+
+--------------------------------------------------------------------------------
+5. CONFLICTOS
+--------------------------------------------------------------------------------
+
+KC-AP-001                | OPEN (tercera confirmacion) | Entidades_Mapeo usado deliberadamente por C003
+C003-AP-020 (HTML adjuntos)| CONFLICT con buena practica| Defecto real confirmado, no se hereda
+AllowPartial forzado en UI | Antipatron documentado      | Ver seccion 10
+
+--------------------------------------------------------------------------------
+6. KC-AP-001
+--------------------------------------------------------------------------------
+
+La pregunta pendiente no cambia respecto al cierre de Sprint 8.8.1: si
+los ETL/procesos de ambito ITP-generico se resincronizaron con el
+catalogo vivo despues de la "version 4" del workbook dedicado, o
+quedaron congelados en ella. C003 aporta una tercera fuente
+independiente en la misma direccion (usa Entidades_Mapeo), sin decidir
+la pregunta.
+
+--------------------------------------------------------------------------------
+7. IDENTIDAD AP
+--------------------------------------------------------------------------------
+
+Diseno propuesto (no implementado): 4 identificadores distintos -
+identidad global (source_system.source_object_type.source_record_id),
+identidad local, historical identifier (CS_HistoricalAPID proyectado
+desde la identidad global) y display/reference identifier (Id de
+Enablon). No se modifica el CDM. Pendiente de decision humana: si
+namespacear CS_HistoricalAPID retroactivamente o solo hacia adelante
+(backlog P1-11).
+
+--------------------------------------------------------------------------------
+8. FLUJOS
+--------------------------------------------------------------------------------
+
+8 FlowCode de C003 + piloto ITPII2 + MOC/GCT (no cubierto por C003), 15
+combinaciones flujo+origen, cruzadas contra config/modules.yaml. 3
+origenes (HAZOPS, 2 de OTROS) sin modulo EMF equivalente confirmado -
+quedan UNKNOWN. No se asume que los nombres de flujo de C003 deban
+convertirse en modulos EMF.
+
+--------------------------------------------------------------------------------
+9. RELACIONES DE PADRE
+--------------------------------------------------------------------------------
+
+Antipatron confirmado en C003: un AP con padre no resuelto se exporta
+igual, con referencia vacia y una advertencia en fichero aparte -
+comportamiento por defecto. Politica EMF propuesta: 4 estados
+(RESOLVED/UNRESOLVED/AMBIGUOUS/NOT_REQUIRED), un AP UNRESOLVED NO
+finaliza en el lote - se aisla, nunca se convierte silenciosamente en
+referencia vacia. Backlog P1-12.
+
+--------------------------------------------------------------------------------
+10. PROJECT CONTRACT
+--------------------------------------------------------------------------------
+
+C003 usa la plantilla fija de 69 columnas. La evidencia EMF observa
+31-33 columnas reales. NO se adopta la plantilla de 69 - la diferencia
+es, en su mayoria, columnas NON_IMPORTABLE/no usadas por este proyecto,
+no un error. 3 columnas (TeamMembers, CS_SpecifyEffectivenessReviewer,
+CS_ReasonForExtension) quedan LEGACY_C003, sin confirmar en los exports
+reales. Backlog P1-13.
+
+--------------------------------------------------------------------------------
+11. SIMS
+--------------------------------------------------------------------------------
+
+Origen 12 ("Simulacros", automaticos): C003 fija Sources =
+'\BC\Crisis\CrisisActionPlan' y LinkTargetColumn = NULL - no enlaza via
+ningun campo directo del AP, a diferencia del origen 18, que si enlaza
+via CS_Drills. Hipotesis: el origen 12 se vincula indirectamente a
+traves del objeto Crisis (BCM). No verificado contra un CSV Operational
+real - PARTIAL_MATCH, no pregunta sin pistas. Backlog P2-09.
+
+--------------------------------------------------------------------------------
+12. ATTACHMENTS
+--------------------------------------------------------------------------------
+
+Clave compuesta (Idinforme+Tipo de Informe=8+Visible=1) es conocimiento
+funcional confirmado y reutilizable. La generacion HTML SIN ESCAPAR
+WebUrl/FileName es un defecto real confirmado en ambos procedimientos
+SQL de C003 - NO se hereda. Diseno del componente transversal futuro con
+identidad, validacion de URI, escaping, deduplicacion y lineage; la
+porcion report_type=8 es especifica de AP, el resto es transversal.
+
+--------------------------------------------------------------------------------
+13. REJECTS
+--------------------------------------------------------------------------------
+
+Reclasificacion respecto a la premisa del encargo: no es
+LEGACY_INOPERATIVE sin mas - rej.ActionPlan, rejects.csv y el gate
+AllowPartial estan correctamente cableados y son codigo activo;
+simplemente ninguna regla de negocio implementada hoy produce una fila
+de rechazo. Se clasifica SCAFFOLDED_BUT_UNUSED. Diseno propuesto:
+reutilizar el modelo ValidationIssue/issues.jsonl ya existente,
+extendido con 3 tipos nuevos - no se crea un segundo sistema de errores.
+
+--------------------------------------------------------------------------------
+14. ALLOWPARTIAL
+--------------------------------------------------------------------------------
+
+Hallazgo concreto: Start-ActionPlansUI.ps1 (lineas 126 y 131) anade
+-AllowPartial a TODA invocacion lanzada desde la UI WPF, de forma
+incondicional - sin checkbox, sin confirmacion. Los scripts CLI si lo
+exponen como decision consciente. Politica EMF propuesta: la decision
+procede del Project Contract/configuracion versionada, nunca de un
+valor por defecto de la UI.
+
+--------------------------------------------------------------------------------
+15. MAPPINGSET
+--------------------------------------------------------------------------------
+
+Draft, no publicacion definitiva. Mapea las reglas C003 mas verificadas
+contra los rule_type ya existentes (lookup, direct, constant,
+conditional, registered_transform, concatenate, reference,
+date_conversion). Los catalogos se representarian como recursos
+gobernados por ResourceResolver, nunca embebidos en el MappingSet.
+
+--------------------------------------------------------------------------------
+16. ALGORITMOS REUTILIZABLES
+--------------------------------------------------------------------------------
+
+ALREADY_EXISTS: hash de integridad, patron de manifest declarativo,
+extraccion de Excel via XML crudo.
+REUSE_CONCEPT: resolucion de entidad con comodin de especificidad,
+enrutado dinamico de columna destino, concatenacion etiquetada,
+desempate determinista de duplicados.
+DO_NOT_USE: HTML sin escapar, tabla de rejects vacia copiada tal cual.
+
+--------------------------------------------------------------------------------
+17. DISENO DEL ADAPTADOR AP
+--------------------------------------------------------------------------------
+
+Consumidor del Framework Core (ModuleRegistry, WorkspaceManifest,
+ResourceResolver, SQL Execution Guard - todos ya existen). Soporta
+multiples source_object_type desde el primer incremento. 8
+PipelineStages conceptuales. No depende de WPF/PowerShell/sqlcmd ni de
+una base de datos de staging al estilo C003_Migration.
+
+NOTA DE HONESTIDAD: el encargo citaba "ADR-003 Action Plans Cross
+Module" como si ya existiera - no existe en este repositorio (docs/02-adr/
+llega hasta ADR-016). Se documenta explicitamente en vez de fingir una
+integracion con algo que no esta ahi. Si se aprueba este diseno,
+correspondería ADR-017.
+
+--------------------------------------------------------------------------------
+18. UI FUTURA
+--------------------------------------------------------------------------------
+
+Pospuesta. C003 confirma un patron correcto (UI sin logica de negocio)
+y uno incorrecto a no repetir (AllowPartial forzado). 8 requisitos
+minimos listados antes de cualquier UI EMF futura.
+
+--------------------------------------------------------------------------------
+19. COVERAGE
+--------------------------------------------------------------------------------
+
+No se publica un nuevo porcentaje - misma metodologia y misma razon
+fijada desde Sprint 8.8. C003 aporta reglas nuevas de campo pero no
+cierra la verificacion celda-a-celda pendiente en 7 de 9 modulos.
+
+--------------------------------------------------------------------------------
+20. BACKLOG
+--------------------------------------------------------------------------------
+
+24 items abiertos (era 20 tras Sprint 8.8.1): 1 cerrado (P2-06), 5
+nuevos (P1-11, P1-12, P1-13, P2-09, P2-10).
+
+--------------------------------------------------------------------------------
+21. ESTADO DE SPRINT 8.1 (RESOLUCION FINAL)
+--------------------------------------------------------------------------------
+
+knowledge-traceability-matrix.md
+  UPDATE_AND_COMMIT - ya actualizado en Sprint 8.8.1 (OQ-ETL-01/02
+  RESOLVED, filas amarillo->verde).
+
+drills-csv-contract.md
+  KEEP_AND_COMMIT - sigue siendo correcto, sin cambio de contenido.
+
+knowledge-coverage-matrix.md
+  KEEP_AND_COMMIT - alcance sin cambio.
+
+Informe-Knowledge-Audit-EMF.md / .txt (2026-07-27)
+  ARCHIVE - registro historico inmutable, metodologia superada pero no
+  erronea, no se edita retroactivamente.
+
+Ninguno se elimina - DELETE_CANDIDATE no se aplico a ninguno.
+
+--------------------------------------------------------------------------------
+22. RIESGOS
+--------------------------------------------------------------------------------
+
+- El "assessment de Codex" citado en el encargo no estaba disponible -
+  si existe y numera las 30 reglas de forma distinta, ambos inventarios
+  deben reconciliarse en una sesion futura.
+- Ningun dato real de runs/ de C003 se leyo mas alla de un
+  manifest.json (solo estructura).
+- El diseno del Adaptador AP es conceptual - no validado contra
+  implementacion real.
+
+--------------------------------------------------------------------------------
+23. DECISIONES REQUERIDAS
+--------------------------------------------------------------------------------
+
+1. KC-AP-001 - confirmar con el cliente resincronizacion post-"version 4".
+2. P1-11 - politica de namespace para CS_HistoricalAPID.
+3. P1-12 - aprobar politica de padres no resueltos.
+4. Confirmar con el cliente si el documento de asunciones (ticket #7581)
+   ya fue entregado.
+5. Aprobar (o no) la propuesta de commit combinada de la seccion 28.
+
+--------------------------------------------------------------------------------
+24. ROADMAP PROPUESTO (NO VINCULANTE)
+--------------------------------------------------------------------------------
+
+1. Cerrar P1-13 (Project Contract AP columna a columna).
+2. Confirmar P1-11/P1-12 con el cliente.
+3. Implementar el Adaptador AP nativo empezando por un solo
+   source_system (ITP-generico).
+4. Formalizar ADR-017 si el diseno se aprueba tal cual.
+
+--------------------------------------------------------------------------------
+25. ARCHIVOS CREADOS
+--------------------------------------------------------------------------------
+
+docs/01-architecture/action-plans-native-design.md
+docs/07-developer-guide/c003-knowledge-adoption.md
+reports/executions/2026-08-12/Informe-C003-Knowledge-Adoption-EMF.md
+reports/executions/2026-08-12/Informe-C003-Knowledge-Adoption-EMF.txt
+
+--------------------------------------------------------------------------------
+26. ARCHIVOS MODIFICADOS
+--------------------------------------------------------------------------------
+
+docs/01-architecture/mapping-governance.md          (seccion 13 nueva, renumeracion)
+docs/07-developer-guide/moeve-source-inventory.md    (seccion 12 nueva)
+docs/07-developer-guide/moeve-mapping-backlog.md     (P2-06 cerrado, 5 items nuevos)
+config/knowledge/moeve/ap/knowledge-conflicts.yaml   (status_note_8_9)
+config/knowledge/moeve/ap/source-inventory.yaml      (c003_actionplans_tool)
+config/knowledge/moeve/ap/mapping-set.yaml           (3 reglas nuevas)
+config/knowledge/moeve/ap/unresolved-rules.yaml      (hipotesis SIMS)
+
+.claude/settings.local.json sigue apareciendo modificado en git status
+(permisos de sesion) - ajeno a los 3 sprints, no se incluye en ninguna
+propuesta de commit.
+
+--------------------------------------------------------------------------------
+27. TESTS
+--------------------------------------------------------------------------------
+
+pytest tests/ -v -> 714 passed, 7 skipped (identico antes y despues). No
+se modifico ni se anadio codigo funcional.
+
+--------------------------------------------------------------------------------
+28. PROPUESTA DE COMMITS (CONSOLIDADA 8.8 + 8.8.1 + 8.9, NO EJECUTADOS)
+--------------------------------------------------------------------------------
+
+1. Mapping governance: mapping-governance.md (contenido integro de los
+   3 sprints), knowledge-source-governance.md.
+2. Moeve source inventory / knowledge: moeve-source-inventory.md,
+   moeve-mapping-backlog.md, config/knowledge/moeve/ap/.
+3. Action Plans native design (nuevo en 8.9):
+   action-plans-native-design.md, c003-knowledge-adoption.md.
+4. Sprint 8.1 - actualizacion de conocimiento:
+   knowledge-traceability-matrix.md, drills-csv-contract.md,
+   knowledge-coverage-matrix.md.
+5. Sprint 8.1 - archivo historico: Informe-Knowledge-Audit-EMF.md/.txt
+   (se commitean tal cual, sin editar).
+6. Codigo generico nuevo: ninguno en los 3 sprints.
+7. Documentacion e informes: los informes de los 3 sprints.
+
+Ningun dato real de ningun workspace externo se incluye en ninguno de
+los commits propuestos.
+
+--------------------------------------------------------------------------------
+29. GIT STATUS --SHORT
+--------------------------------------------------------------------------------
+
+ M .claude/settings.local.json
+?? config/knowledge/
+?? docs/01-architecture/action-plans-native-design.md
+?? docs/01-architecture/drills-csv-contract.md
+?? docs/01-architecture/knowledge-coverage-matrix.md
+?? docs/01-architecture/knowledge-source-governance.md
+?? docs/01-architecture/knowledge-traceability-matrix.md
+?? docs/01-architecture/mapping-governance.md
+?? docs/07-developer-guide/c003-knowledge-adoption.md
+?? docs/07-developer-guide/moeve-mapping-backlog.md
+?? docs/07-developer-guide/moeve-source-inventory.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.txt
+?? reports/executions/2026-08-12/
+
+--------------------------------------------------------------------------------
+30. GIT DIFF --STAT
+--------------------------------------------------------------------------------
+
+ .claude/settings.local.json | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+Unico archivo con diff. git diff --check: sin salida, 0 problemas de
+espacio en blanco.

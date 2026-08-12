@@ -1,0 +1,180 @@
+# Reglas identificadas para el módulo ap. Esquema: ver
+# docs/01-architecture/mapping-governance.md § 3.1. Ningún dato real de
+# fila -- solo identidad y evidencia de regla.
+
+mapping_set_id: moeve.ap.v1
+client_id: moeve
+project_id: moeve
+module_id: ap
+object_type: ActionPlans
+
+rules:
+  - rule_id: ap.entity_axis_resolution
+    rule_revision: 2
+    status: CURRENT_UNVERIFIED   # ver knowledge-conflicts.yaml: KC-AP-001
+    target_field: Entity
+    source_field: [IDUnidadOrg]  # ámbito MOC/GCT: vía Exportación eje; ámbito ITP-genérico: vía Entidades_Mapeo
+    rule_type: lookup
+    transformation: >
+      2 pasos: resolver IDUnidadOrg contra el catálogo vivo "Exportación
+      eje" (mismo patrón que First_Axis) usando la regla declarativa de
+      la hoja MapeoEje_uorg (patrón DatoOrigen/DatoDestino/EsCondicion/
+      ReglaEspecial/Parametro).
+    lookup_reference: "etl:ap_gct_new_sitecan#Exportación eje"
+    null_behavior: not_confirmed
+    exclusion_behavior: not_confirmed
+    evidence_source: etl:ap_gct_new_sitecan
+    evidence_location: "hoja MapeoEje_uorg + Exportación eje"
+    confidence: medium
+    functional_description: >
+      Resolución del eje/entidad de un Action Plan de origen MOC/GCT
+      contra el catálogo de entidades vigente embebido en el propio ETL.
+    technical_description: >
+      Ver mapping-governance.md § 7 para el detalle completo, incluida la
+      revisión anterior (rule_revision: 1, status: HISTORICAL, ver abajo).
+
+  - rule_id: ap.entity_axis_resolution
+    rule_revision: 1
+    status: HISTORICAL
+    target_field: Entity
+    source_field: [IDUnidadOrg]
+    rule_type: lookup
+    transformation: "Lookup estático contra hoja Entidades_Mapeo embebida en el ETL (por-módulo, ya marcada desactualizada en CLAUDE.md)."
+    lookup_reference: "etl:ap_con_ajuste_entidad_new_sietcan#Entidades_Mapeo"
+    evidence_source: etl:ap_con_ajuste_entidad_new_sietcan
+    evidence_location: "hoja Entidades_Mapeo"
+    confidence: medium
+    functional_description: >
+      Resolución del eje/entidad de un Action Plan de origen ITP-genérico
+      (Eventos, Simulacros, Inspecciones, OPS, Safety Meetings, HAZOPS,
+      Otros) contra una copia estática del catálogo, embebida en el ETL.
+    technical_description: >
+      Sigue siendo el único mecanismo visible para el ámbito
+      ITP-genérico -- no se ha confirmado que rule_revision 2 lo
+      reemplace (ver KC-AP-001).
+    supersedes: null   # no se marca "supersedes: 2" porque el ámbito no es el mismo -- ver KC-AP-001
+
+  - rule_id: ap.historical_apid_title
+    rule_revision: 1
+    status: CURRENT_UNVERIFIED
+    target_field: CS_HistoricalAPID
+    source_field: [IDAccion]
+    rule_type: lookup
+    transformation: "=_xlfn.XLOOKUP(C2,H:H,G:G,\"\",0,1) -- lookup 2 columnas dentro de la propia hoja de regla."
+    evidence_source: etl:ap_gct_new_sitecan
+    evidence_location: "hoja MAP-AP-CR, fila 2"
+    confidence: high
+    functional_description: "Referencia al identificador histórico original del plan de acción."
+    technical_description: "Patrón XLOOKUP repetido en casi toda hoja MAP-* -- ver mapping-specification.md para cómo representarlo como lookup declarativo."
+
+  - rule_id: ap.user_clone_with_lookup
+    rule_revision: 1
+    status: CURRENT_VERIFIED   # resuelto en Sprint 8.8.1 -- ver P3-08 (CERRADO)
+    target_field: [CS_HistoricalUserName, CS_HistoricalUserId]
+    source_field: ["*"]
+    rule_type: value_map   # cloneorigin no es un ReglaEspecial procesado por el motor -- es un
+                            # literal encontrado en la celda DatoDestino de la fila de match;
+                            # cuando el motor lo encuentra, escribe el "valor" de entrada tal
+                            # cual en esa columna (ver aplicarHojaReferenciaOptimizada, líneas
+                            # ~868-880 de Script ETL.txt). El BUSCARX/XLOOKUP en Parametro es
+                            # el mecanismo NORMAL de resolución de la fila de match, no un paso
+                            # adicional exclusivo de este caso.
+    condition: "si"
+    transformation: >
+      Fila de MAP_UserEnablon con DatoOrigen="*" (comodín, coincide
+      siempre) y columna de destino con literal "cloneorigin": el motor
+      resuelve primero la fila de coincidencia en la hoja de referencia
+      (aquí, mediante la fórmula BUSCARX/XLOOKUP embebida como texto en
+      la celda, un patrón general del ETL -- ver "convención $" en
+      moeve-source-inventory.md § 4bis), y cuando el valor de esa celda
+      es literalmente "cloneorigin", copia el valor de entrada
+      (`valor`) tal cual a esa columna de salida.
+    lookup_reference: "CT_USUARIOS[IDUsuario]->CT_USUARIOS[Nombre]"
+    evidence_source: "etl:ap_gct_new_sitecan, mapping:script_etl_office_script"
+    evidence_location: "hoja Map_UserEnablon (ETL); Script ETL.txt líneas 860-892 (motor)"
+    confidence: high
+    functional_description: "Resuelve nombre de usuario a partir de un lookup contra el directorio de usuarios GCT y lo propaga (clona) tal cual al campo histórico."
+    technical_description: >
+      RESUELTO en Sprint 8.8.1 con el código fuente real del motor
+      (Documentos de explicación de los transformadores/Script ETL.txt,
+      dentro de Mappings/OneDrive_2_12-8-2026.zip, inspección autorizada).
+      No es una variante de cloneorigin -- es el mecanismo estándar de
+      cloneorigin operando sobre un valor que llegó de un lookup
+      embebido en la propia celda de referencia, comportamiento idéntico
+      en todos los módulos.
+
+# replaceinreference y boolorigin (catálogo de CLAUDE.md) no se
+# encontraron por nombre exacto en ninguna hoja de ap -- no se listan
+# aquí como reglas porque no hay evidencia, ver unresolved-rules.yaml.
+
+# --- Reglas añadidas en Sprint 8.9 (evidencia C003) ---
+# Ver docs/07-developer-guide/c003-knowledge-adoption.md § 2-3 para el
+# detalle completo de las 30 reglas C003 reconstruidas. Solo se listan
+# aquí las que alcanzan MATCHES_CURRENT_EVIDENCE o HISTORICAL_VERIFIED
+# con evidencia cruzada -- el resto queda en el documento de adopción,
+# no se promueve a este MappingSet sin más verificación (ver
+# mapping-governance.md § 2, C003 es precedencia 7 en solitario).
+
+  - rule_id: ap.priority_by_time_to_due_date
+    rule_revision: 1
+    status: MATCHES_CURRENT_EVIDENCE
+    target_field: Priority
+    source_field: [IDPrioridad, FechaCreacion, FechaPrevistaFin]
+    rule_type: conditional
+    transformation: >
+      LegacyPriorityId=438 -> Code3 directo. 439/440/441 -> escalado por
+      meses entre FechaCreacion y FechaPrevistaFin: <3 meses -> Code2,
+      <=12 meses -> Code3, >12 meses -> Code0.
+    evidence_source: "etl:ap_gct_new_sitecan#Priorities_Map, c003_actionplans_tool"
+    evidence_location: "hoja Priorities_Map (ETL, fórmula SI/SIFECHA); sql/30-generic-action-plans.sql L77-89 y sql/40-build-generic-action-plans.sql L139-149 (C003, SQL equivalente)"
+    confidence: high
+    functional_description: "Prioridad directa para un valor legacy, o escalada por proximidad de vencimiento para los otros 3."
+    technical_description: >
+      Confirmado por dos implementaciones independientes (ETL Excel y
+      C003 nativo) con el mismo resultado -- MATCHES_CURRENT_EVIDENCE
+      por coincidencia entre 2 fuentes de precedencia >= 4
+      (mapping-governance.md § 2).
+
+  - rule_id: ap.flow_origin_routing
+    rule_revision: 1
+    status: MATCHES_CURRENT_EVIDENCE
+    target_field: [Sources, Incidents, ACSObservation, CS_IndependentManualEvents, CS_IndManualOPS, CS_IP, CS_Drills, CS_Meetings]
+    source_field: [IDOrigenAC/idorigenac]
+    rule_type: lookup
+    transformation: >
+      Cada combinación (flujo, idorigenac) determina el valor de
+      Sources y a qué columna de destino se enruta la referencia
+      resuelta (LinkTargetColumn). Ver tabla completa en
+      action-plans-native-design.md § 2.2.
+    lookup_reference: "c003_actionplans_tool#cfg.ActionPlanFlowOrigin"
+    evidence_source: "c003_actionplans_tool, CLAUDE.md, config/modules.yaml"
+    evidence_location: "sql/30-generic-action-plans.sql L139-191"
+    confidence: high
+    functional_description: "Resuelve el mapeo exacto de idorigenac -> Sources/columna de enlace de padre, ya pedido en el backlog P2-06 de Sprint 8.8."
+    technical_description: >
+      Coincide con config/modules.yaml::idorigenac_por_modulo en los
+      IDs ya conocidos (16/17, 2/13, 4/9, 12/18, 3/8, 11, 7/14) y añade
+      HAZOPS=6, no documentado antes. Cierra backlog P2-06.
+
+  - rule_id: ap.historical_apid_namespace_inconsistency
+    rule_revision: 1
+    status: CURRENT_VERIFIED
+    target_field: CS_HistoricalAPID
+    source_field: [IDAccionCorrectora]
+    rule_type: direct
+    condition: "por source_system"
+    transformation: >
+      Piloto ITP_II2: CONCAT('ITPII2.', IDAccionCorrectora) --
+      namespaced. Los 8 flujos genéricos: IDAccionCorrectora a secas --
+      sin namespace (HistoricalApPrefix vacío para los 8).
+    evidence_source: c003_actionplans_tool
+    evidence_location: "sql/20-build.sql L168; sql/30-generic-action-plans.sql L124-136; sql/40-build-generic-action-plans.sql L158-161"
+    confidence: high
+    functional_description: >
+      Confirma la inconsistencia de namespace de identidad que motiva
+      el diseño de identidad global de action-plans-native-design.md
+      § 1. No colisiona hoy dentro de C003 (los 8 flujos comparten una
+      única tabla origen con IDAccionCorrectora único); sí sería un
+      riesgo si se combina con un cuarto origen (p.ej. MOC/GCT) sin
+      namespace explícito.
+    technical_description: "Ver action-plans-native-design.md § 1 para el diseño de identidad global propuesto (no implementado)."

@@ -1,0 +1,345 @@
+INFORME DE EJECUCION - SPRINT 8.8: MAPPING GOVERNANCE & KNOWLEDGE CONSOLIDATION
+================================================================================
+
+Fecha: 2026-08-12
+Rama: feature/drills-filtered-exports
+Alcance: Inspeccion y documentacion de solo lectura del workspace real de
+Moeve (EMF_DATA_ROOT/projects/moeve/). Sin ejecucion de SQL Server, macros,
+Power Query ni recalculo. Sin commit.
+
+--------------------------------------------------------------------------------
+1. RESUMEN EJECUTIVO
+--------------------------------------------------------------------------------
+
+Este sprint tuvo, por primera vez, acceso de solo lectura a los 11 ETL Excel
+reales de Moeve (21 MB-361 MB cada uno), los 44 CSV reales (Template +
+Operational), el export de incidencias del cliente y los mappings de
+entidad/attachments. El objetivo no era migrar ni ejecutar nada - era
+convertir ese conocimiento, hasta ahora disperso en Excel individuales, en
+documentacion estructurada, versionada y auditable dentro del EMF.
+
+Resultado: 4 documentos nuevos (mapping-governance.md,
+knowledge-source-governance.md, moeve-source-inventory.md,
+moeve-mapping-backlog.md), un conjunto concreto de artefactos de
+conocimiento para el caso obligatorio del encargo (Action Plans, en
+config/knowledge/moeve/ap/), y este informe. Se confirmaron 3 hallazgos
+nuevos no documentados en CLAUDE.md (seccion 6), se abrieron 3
+KNOWLEDGE_CONFLICT (ninguno resuelto en silencio) y se genero un backlog de
+19 items priorizados (8 P1, 6 P2, 4 P3, 1 P4). No se ha hecho ningun commit
+- ver seccion 22 para la propuesta.
+
+--------------------------------------------------------------------------------
+2. FUENTES INSPECCIONADAS
+--------------------------------------------------------------------------------
+
+61 archivos en EMF_DATA_ROOT/projects/moeve/: 11 ETL, 14 CSV Template, 30
+CSV + 2 XLSX Operational, 1 CSV de Errors (28 tickets), 1 CSV de Mappings
+(AttachmentsLast.csv, 31 MB) y 2 archivos .zip NO EXTRAIDOS
+(Mappings/OneDrive_2_12-8-2026.zip, SQL/OneDrive_1_12-8-2026.zip -
+prohibido extraer sin autorizacion, no solicitada). Detalle completo, por
+categoria y con source_document_id, en
+docs/07-developer-guide/moeve-source-inventory.md seccion 1.
+
+Metodo de extraccion de los ETL: inspector Python de solo lectura
+(openpyxl, read_only=True, data_only=False), leyendo hoja, visibilidad,
+cabecera y una muestra acotada de filas - nunca el libro completo, dado el
+tamano (hasta 361 MB). Deteccion de VBA/conexiones/Power Query por listado
+de la estructura interna del contenedor ZIP del propio xlsx/xlsm (metadata
+de nombres de parte, nunca ejecucion).
+
+--------------------------------------------------------------------------------
+3. MODULOS DETECTADOS
+--------------------------------------------------------------------------------
+
+simulacros, safety_meetings, moc, bypass, eventos (+ impactos,
+investigaciones, PSM), ops, inspecciones, ap - los 9 ya conocidos por
+config/modules.yaml. No se detecto ningun modulo adicional.
+
+Gap de evidencia nuevo: bypass, ops y ap no tienen ningun CSV Template en
+este workspace - solo Operational. La comparacion Template-vs-Operational
+(Fase 6 del encargo) no pudo hacerse para esos 3 modulos.
+
+--------------------------------------------------------------------------------
+4. VERSIONES ETL
+--------------------------------------------------------------------------------
+
+Matriz completa en moeve-source-inventory.md secciones 3-4. Dos casos de
+versionado identificados:
+
+- Action Plans: 2 ETL, NO secuenciales - cubren ambitos de origen
+  distintos (MOC/GCT vs. ITP-generico). Ver seccion 5.
+- MOC: 2 .xlsm con estructura identica de 80 hojas
+  (ETL_MOC_m_NEW_SITECAN.xlsm, 2026-07-28; ETL_MOC_NewColumns.xlsm,
+  2026-08-11) - mismo esqueleto, diferencia de columnas dentro de hoja no
+  comparada en este sprint (backlog P2-03).
+
+--------------------------------------------------------------------------------
+5. ACTION PLANS - ULTIMA VERSION VERIFICADA DEL MAPPING DEL EJE
+--------------------------------------------------------------------------------
+
+Caso obligatorio del encargo. El ETL de ambito MOC/GCT
+(ETL- AP_GCT_NEW_SITECAN.xlsx) tiene dos hojas que el ETL de ambito
+ITP-generico (ETL- AP-Con Ajuste Entidad_NEW_SIETCAN (1).xlsx) no tiene:
+"Exportacion eje" (catalogo vivo, mismo patron que First_Axis) y
+"MapeoEje_uorg" (regla declarativa de resolucion en 2 pasos). El ETL
+ITP-generico solo tiene la hoja "Entidades_Mapeo", el mecanismo estatico ya
+marcado obsoleto en CLAUDE.md.
+
+Se registro como mapping_revision con rule_revision 2 (nueva,
+CURRENT_UNVERIFIED) sustituyendo conceptualmente a rule_revision 1
+(HISTORICAL) - pero NO se marco CURRENT_VERIFIED sin confirmacion humana:
+ambos ETL cubren ambitos de origen distintos, y no puede confirmarse solo
+con evidencia estructural si el mecanismo nuevo debia alcanzar tambien al
+ambito ITP-generico y se quedo atras, o si son mecanismos deliberadamente
+distintos por sistema de origen. Se abrio KNOWLEDGE_CONFLICT KC-AP-001
+(backlog P1-01) - no resuelto en silencio, pendiente de confirmacion del
+cliente/consultor.
+
+--------------------------------------------------------------------------------
+6. CSV TEMPLATE VS. OPERATIONAL
+--------------------------------------------------------------------------------
+
+- Encoding NO uniforme: Template siempre UTF-16/tab; Operational mezcla
+  UTF-8/UTF-16/latin-1 incluso dentro del mismo modulo.
+- moc: el Template (Change Register-17.csv, 106 columnas) es un superset
+  amplio del Operational real (61 columnas).
+- ap: 3 exports Operational con 33/31/31 columnas DISTINTAS entre si, sin
+  Template de referencia.
+- safety_meetings: 1 columna sin nombre en el Operational real, posicion
+  19/22 - UNRESOLVED_RULE (P2-05).
+
+--------------------------------------------------------------------------------
+7. PROJECT CONTRACTS
+--------------------------------------------------------------------------------
+
+Definidos (a nivel de columnas observadas) para los 8 modulos con CSV
+Operational disponible. Ninguno tiene, en este sprint, sus columnas
+cruzadas celda-a-celda contra la hoja de regla exacta mas alla de los
+casos AP/MOC/Drills ya trabajados.
+
+--------------------------------------------------------------------------------
+8. CAMPOS ESTANDAR
+--------------------------------------------------------------------------------
+
+No se genero un catalogo formal de campos estandar por modulo en este
+sprint mas alla de distinguirlos de CS_ en las tablas de columnas ya
+producidas.
+
+--------------------------------------------------------------------------------
+9. CAMPOS CS_
+--------------------------------------------------------------------------------
+
+Contados por archivo (no deduplicados entre exports del mismo modulo, ni
+tratados como el mismo concepto solo por compartir nombre): de 71 columnas
+en Events-4.csv (Template), 47 son CS_; de 106 en Change Register-17.csv
+(Template MOC), 58 son CS_; de 92 en Impacts-9.csv, 43. Ningun campo CS_ se
+trato como identico a otro por compartir evidence_id o nombre parecido.
+
+--------------------------------------------------------------------------------
+10. MAPPINGS
+--------------------------------------------------------------------------------
+
+Dos patrones de hoja de regla confirmados con evidencia real: Patron A
+(CampoOrigen | Field Destiny XML | ... | Transformation From) y Patron B
+(DatoOrigen | DatoDestino | EsCondicion | ReglaEspecial | Parametro).
+Reglas confirmadas con evidencia de celda: titlefix+cloneorigin combinados
+en la misma fila (Simulacros, AP, Safety Meetings), nullcontrol con el
+literal "No name defined in historical data" (Simulacros).
+
+--------------------------------------------------------------------------------
+11. ENTITY MAPPINGS
+--------------------------------------------------------------------------------
+
+inputs/entity_catalog/ (First_Axis) sigue siendo la fuente de verdad ya
+fijada. Las hojas "Exportacion eje" embebidas en ap_gct/moc_m_new/
+moc_newcolumns siguen el mismo patron exacto que First_Axis. Entidades_Mapeo
+(estatico, deprecado) sigue presente en 8 de los 11 ETL.
+
+--------------------------------------------------------------------------------
+12. ITP
+--------------------------------------------------------------------------------
+
+KNOWLEDGE_CONFLICT KC-ITP-003 (informativo, no bloqueante): la
+modernizacion del mapeo de eje llego a MOC y AP-GCT (origen GCT) pero no a
+los 6 modulos restantes de origen ITP-generico. No afecta a este
+repositorio, pero es relevante como posible antecedente del Hallazgo #1.
+
+--------------------------------------------------------------------------------
+13. ATTACHMENTS
+--------------------------------------------------------------------------------
+
+Mappings/AttachmentsLast.csv (31 MB, 9 columnas) NO es un mapping de
+entidades ni pertenece solo a Drills - es el catalogo consolidado de
+referencias SharePoint, estructuralmente identico al patron TablaAdjuntos/
+AdjuntosGCT/AdjuntosSITECANARIAS embebido en 8 de los 11 ETL. "Centro" no
+se resolvio contra IDCentro de ningun sistema sin cruzarlo modulo a modulo
+- UNRESOLVED_RULE (P2-07).
+
+--------------------------------------------------------------------------------
+14. SQL INVENTORY
+--------------------------------------------------------------------------------
+
+48 queries ya versionadas en sql/source_queries/ (sin cambios). El .zip de
+SQL/ no se abrio. Se inspecciono connections.xml en 1 de los 11 ETL
+(eventos_nuevos): conexiones Power Query internas tabla-a-tabla, no queries
+SQL Server nuevas.
+
+--------------------------------------------------------------------------------
+15. ERRORS - CLASIFICACION
+--------------------------------------------------------------------------------
+
+Errors/Requests-12082026-28.csv, 28 filas. 3 clasificadas en detalle (2
+MIGRATION_RELATED, 1 PROBABLY_MIGRATION_RELATED). 25 filas restantes
+pendientes de clasificacion individual (backlog P2-08).
+
+--------------------------------------------------------------------------------
+16. KNOWLEDGE CONFLICTS (RESUMEN)
+--------------------------------------------------------------------------------
+
+KC-AP-001  | ap                        | OPEN | Bloqueante (P1-01)
+KC-MOC-002 | moc                       | OPEN | No bloqueante
+KC-ITP-003 | 6 modulos ITP-generico    | OPEN | Informativo, no bloqueante
+
+--------------------------------------------------------------------------------
+17. COBERTURA POR MODULO
+--------------------------------------------------------------------------------
+
+No se publica un porcentaje agregado - ver metodologia completa en
+moeve-mapping-backlog.md seccion 1. Tabla de cobertura real por modulo en
+ese mismo documento, seccion 1.1.
+
+--------------------------------------------------------------------------------
+18. KNOWLEDGE BACKLOG
+--------------------------------------------------------------------------------
+
+19 items: 8 P1 (blocking), 6 P2 (difference), 4 P3 (knowledge gap), 1 P4
+(historical). Lista completa en
+docs/07-developer-guide/moeve-mapping-backlog.md seccion 2.
+
+--------------------------------------------------------------------------------
+19. GAPS P1/P2/P3/P4
+--------------------------------------------------------------------------------
+
+Los dos items de mayor impacto: P1-01 (confirmar el alcance real de la
+modificacion del mapping del eje de AP) y P1-02 (autorizacion para abrir
+los dos .zip).
+
+--------------------------------------------------------------------------------
+20. RECOMENDACIONES
+--------------------------------------------------------------------------------
+
+1. Pedir confirmacion de KC-AP-001 antes de dar por buena la carga real de
+   Action Plans en el ambito ITP-generico.
+2. Decidir explicitamente si se autoriza la extraccion de los 2 .zip.
+3. Priorizar P1-03/P1-04 (Duracion y Asistentes de Drills) en la proxima
+   sesion.
+4. No formalizar todavia el inspector Python de ETL como codigo de src/
+   (P3-05).
+5. No generar el resto de config/knowledge/moeve/<module>/ (8 modulos) sin
+   las sesiones dedicadas de P1-05 a P1-08.
+
+--------------------------------------------------------------------------------
+21. RIESGOS
+--------------------------------------------------------------------------------
+
+- Los dos .zip sin abrir podrian contener informacion que invalide o matice
+  conclusiones de este informe (en particular KC-AP-001).
+- La inspeccion de ETL fue de hoja+cabecera+muestra, no celda-por-celda
+  completa.
+
+--------------------------------------------------------------------------------
+22. ARCHIVOS CREADOS
+--------------------------------------------------------------------------------
+
+docs/01-architecture/mapping-governance.md
+docs/01-architecture/knowledge-source-governance.md
+docs/07-developer-guide/moeve-source-inventory.md
+docs/07-developer-guide/moeve-mapping-backlog.md
+config/knowledge/moeve/ap/source-inventory.yaml
+config/knowledge/moeve/ap/mapping-set.yaml
+config/knowledge/moeve/ap/knowledge-conflicts.yaml
+config/knowledge/moeve/ap/unresolved-rules.yaml
+config/knowledge/moeve/ap/mapping-coverage.yaml
+config/knowledge/moeve/ap/mapping-evidence.md
+reports/executions/2026-08-12/Informe-Mapping-Governance-Moeve-EMF.md
+reports/executions/2026-08-12/Informe-Mapping-Governance-Moeve-EMF.txt
+
+--------------------------------------------------------------------------------
+23. ARCHIVOS MODIFICADOS
+--------------------------------------------------------------------------------
+
+Ninguno de codigo (src/, tests/, sql/). .claude/settings.local.json aparece
+modificado en git status (permisos de herramientas de esta sesion) - no
+forma parte de este sprint, no se toca ni se incluye en la propuesta de
+commit de la seccion 26.
+
+--------------------------------------------------------------------------------
+24. ESTADO DE SPRINT 8.1
+--------------------------------------------------------------------------------
+
+drills-csv-contract.md, knowledge-coverage-matrix.md,
+knowledge-traceability-matrix.md (no trackeados en git) siguen vigentes -
+no se sobrescriben. Se identificaron 2 preguntas abiertas (OQ-ETL-01,
+OQ-ETL-02) que la evidencia de este sprint acerca a resolverse pero no
+cierra. Recomendacion explicita: no actualizar esos 3 documentos todavia -
+ver moeve-source-inventory.md seccion 11 para el detalle completo.
+
+--------------------------------------------------------------------------------
+25. PROXIMO PASO
+--------------------------------------------------------------------------------
+
+Sesion dedicada a P1-03/P1-04 (lectura de celda completa de
+"DuracionAjustada" y "Asis_concat" en el ETL de Simulacros). En paralelo,
+decision del usuario sobre autorizacion de los 2 .zip (P1-02).
+
+--------------------------------------------------------------------------------
+26. PROPUESTA DE COMMITS (NO EJECUTADOS)
+--------------------------------------------------------------------------------
+
+1. Mapping governance: docs/01-architecture/mapping-governance.md,
+   docs/01-architecture/knowledge-source-governance.md.
+2. Moeve source inventory / knowledge:
+   docs/07-developer-guide/moeve-source-inventory.md,
+   docs/07-developer-guide/moeve-mapping-backlog.md,
+   config/knowledge/moeve/ap/.
+3. Codigo generico nuevo: ninguno - el inspector de ETL usado quedo en el
+   scratchpad de sesion, no se incorporo al repositorio.
+4. Documentacion e informes: este informe (.md + .txt).
+
+Ningun dato real del workspace externo se incluye en ninguno de los
+commits propuestos.
+
+--------------------------------------------------------------------------------
+27. GIT DIFF --CHECK
+--------------------------------------------------------------------------------
+
+Sin salida - 0 problemas de espacio en blanco.
+
+--------------------------------------------------------------------------------
+28. GIT STATUS --SHORT (antes de cualquier commit de este sprint)
+--------------------------------------------------------------------------------
+
+ M .claude/settings.local.json
+?? config/knowledge/
+?? docs/01-architecture/drills-csv-contract.md
+?? docs/01-architecture/knowledge-coverage-matrix.md
+?? docs/01-architecture/knowledge-source-governance.md
+?? docs/01-architecture/knowledge-traceability-matrix.md
+?? docs/01-architecture/mapping-governance.md
+?? docs/07-developer-guide/moeve-mapping-backlog.md
+?? docs/07-developer-guide/moeve-source-inventory.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.txt
+?? reports/executions/2026-08-12/
+
+git diff --stat: solo .claude/settings.local.json (8 inserciones, 1
+eliminacion) - ajenas a este sprint.
+
+--------------------------------------------------------------------------------
+29. TESTS
+--------------------------------------------------------------------------------
+
+pytest tests/ -v -> 714 passed, 7 skipped (identico antes y despues de este
+sprint - no se modifico codigo funcional). No se anadio codigo de
+extraccion nuevo al repositorio, por lo que no se requieren tests nuevos
+conforme a la Fase 20 del encargo.

@@ -1,0 +1,42 @@
+# Cobertura del Project Contract de ap. Metodología: ver
+# docs/07-developer-guide/moeve-mapping-backlog.md § 1. No se publica un
+# porcentaje agregado -- ver la nota de metodología en ese documento
+# sobre por qué no es honesto hacerlo todavía para este módulo.
+
+module_id: ap
+project_contract_source: "3 exports CSV_Enablon_Operational distintos (ver source-inventory.yaml) -- sin CSV_Enablon_Template en este workspace"
+
+operational_exports:
+  - source_document_id: csv_operational:action_plans_10082026_163
+    n_columns: 33
+    n_cs_fields: 16
+  - source_document_id: csv_operational:action_plans_10082026_2
+    n_columns: 31
+    n_cs_fields: 14
+  - source_document_id: csv_operational:action_plans_10082026_3
+    n_columns: 31
+    n_cs_fields: 14
+
+field_status_summary:
+  # Estados: DOCUMENTED, IMPLEMENTED, VALIDATED, PARTIAL, UNRESOLVED, NOT_REQUIRED, SYSTEM_MANAGED
+  documented: 4        # Entity (parcial, ver KC-AP-001), CS_HistoricalAPID, CS_HistoricalUserName/Id (parcial)
+  implemented: 0        # ningún motor EMF genera AP todavía
+  validated: 0
+  partial: 2            # ap.entity_axis_resolution (revision ambigua), ap.user_clone_with_lookup (rule_type provisional)
+  unresolved: 3          # title_field_source_column, sources_mapping_v2, replaceinreference/boolorigin
+  not_required: 0        # sin CSV Template no puede evaluarse SYSTEM/AUTOMATIC/CALCULATED/NON_IMPORTABLE con certeza
+  system_managed_note: >
+    Sin CSV_Enablon_Template para ap en este workspace, no se puede
+    distinguir con evidencia real qué columnas son SYSTEM/AUTOMATIC/
+    CALCULATED/NON_IMPORTABLE -- ver moeve-source-inventory.md § 2 (gap
+    de evidencia). No se asume ninguna clasificación sin el Template.
+
+coverage_statement: >
+  No se calcula un "Operational Mapping Coverage" numérico para ap en
+  este sprint. De las columnas observadas en los 3 exports Operational,
+  1 regla de campo (resolución de entidad) tiene evidencia de mecanismo
+  pero con un conflicto de vigencia abierto (KC-AP-001) que impide
+  marcarla como cobertura confirmada; 2 reglas adicionales tienen
+  evidencia parcial; el resto de las ~31 columnas por export no se
+  cruzó contra su hoja de regla exacta en este sprint (backlog P1-01,
+  P2-06 en moeve-mapping-backlog.md).

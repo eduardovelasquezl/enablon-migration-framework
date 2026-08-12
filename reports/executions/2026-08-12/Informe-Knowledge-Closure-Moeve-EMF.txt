@@ -1,0 +1,282 @@
+INFORME DE EJECUCION - SPRINT 8.8.1: KNOWLEDGE CLOSURE
+================================================================================
+
+Fecha: 2026-08-12
+Rama: feature/drills-filtered-exports
+Alcance: Cierre de los 3 grupos de trabajo abiertos por Sprint 8.8
+(KC-AP-001, los 2 .zip sin inspeccionar, OQ-ETL-01/OQ-ETL-02). Sin
+ejecucion de SQL Server, macros ni recalculo. Sin commit - Sprint 8.8
+sigue pendiente de commit, ver seccion 16 para la estrategia combinada.
+
+--------------------------------------------------------------------------------
+1. KC-AP-001
+--------------------------------------------------------------------------------
+
+NO se cierra - pero queda sustancialmente mejor caracterizado. La
+inspeccion autorizada de Mappings/OneDrive_2_12-8-2026.zip encontro un
+tercer grupo de fuentes: workbooks de mapeo de eje DEDICADOS Y
+VERSIONADOS, independientes de los ETL - "Mapeo ITP primer eje enablon_
+revisado_final1 (version 4).xlsx" para ITP-generico y 3 workbooks
+"Mapeos Eje - GCT/" para GCT.
+
+Comparando CONTENIDO REAL DE FILA (no formula) se confirmo que la hoja
+Entidades_Mapeo embebida en 8 de los 11 ETL es una INSTANTANEA DE
+VALORES de la hoja MAPEOFINAL de ese workbook ITP "version 4" (fila 2
+identica: IDCentro=7/IDDepartamento=77/IDUnidadOrg=278, "MC-Palos de la
+Frontera"/"CONTRATAS GENERICAS"/"MCPF Historico") - y que la hoja
+"Exportacion eje" embebida en ap_gct/moc_m_new/moc_newcolumns es, del
+mismo modo, una instantanea de "260311 Mapeo gct Enablon-Match UORG
+ENTIDAD.xlsx".
+
+CONCLUSION REVISADA: el sistema ITP SI tuvo un esfuerzo de mapeo de eje
+dedicado, tan real y tan versionado ("version 4, final1") como el de
+GCT - no es cierto que "GCT se modernizó y a ITP no se le hizo caso".
+Lo que distingue a los dos sistemas es que el mecanismo de GCT
+(MapeoEje_uorg/Exportacion eje) SE RE-SINCRONIZA en cada regeneracion
+del ETL contra un catalogo vivo, mientras que Entidades_Mapeo es una
+instantanea congelada en el momento de esa "version 4" - lo que explica,
+sin contradecir, el hallazgo ya validado empiricamente en CLAUDE.md
+(42-59% "no catalogado" al usarla directamente).
+
+PREGUNTA QUE SIGUE ABIERTA: si los 7 ETL de ambito ITP-generico se
+resincronizaron desde esa "version 4" en algun momento posterior, o si
+quedaron congelados en ella. KC-AP-001 permanece OPEN, con esta
+caracterizacion nueva registrada en
+config/knowledge/moeve/ap/knowledge-conflicts.yaml (status_note_8_8_1)
+y en docs/01-architecture/mapping-governance.md seccion 12.1.
+
+--------------------------------------------------------------------------------
+2. ESTADO MOC/GCT
+--------------------------------------------------------------------------------
+
+Confirmado y sin cambio respecto a Sprint 8.8: el mecanismo de catalogo
+vivo (MapeoEje_uorg+Exportacion eje para AP-GCT; Niveles+Exportacion eje
+para MOC) es la evidencia funcional mas reciente para el ambito MOC/GCT.
+La inspeccion del ZIP confirma ademas que ese mecanismo tiene un origen
+documental propio y mantenido, no solo una copia embebida sin
+trazabilidad.
+
+--------------------------------------------------------------------------------
+3. ESTADO ITP
+--------------------------------------------------------------------------------
+
+Ver seccion 1. Actualizado de "mecanismo desconocido/quizas nunca
+actualizado" a "mecanismo real y versionado, pero potencialmente
+congelado en el tiempo desde su ultima entrega verificada (version 4)".
+No se etiqueta el ETL ITP-generico como obsoleto en su totalidad - la
+posible obsolescencia afecta especificamente al mecanismo de mapeo del
+eje, no al resto de sus reglas.
+
+--------------------------------------------------------------------------------
+4. ZIP INSPECCIONADOS
+--------------------------------------------------------------------------------
+
+Mappings/OneDrive_2_12-8-2026.zip
+  SHA-256: 4e0d5a8e3d1b75be9ce9e7efdf06b3f053fa38f77e79db3322eac3066f12c01c
+  Entradas: 10
+
+SQL/OneDrive_1_12-8-2026.zip
+  SHA-256: 8d8e214f20a8dff3df0c89464b5da6d2e3a879fb53829c0fc5780d6c57b15438
+  Entradas: 43
+
+Metodo: solo lectura, extraccion a carpeta temporal fuera del
+repositorio y de las carpetas fuente, testzip() verificado antes/despues,
+copia temporal eliminada al finalizar. Ningun contenido se ejecuto (sin
+macros, sin SQL, sin recalculo, sin Power Query). Ningun dato real de
+fila se copio al repositorio.
+
+--------------------------------------------------------------------------------
+5. NUEVOS MAPPINGS
+--------------------------------------------------------------------------------
+
+- 2 workbooks de mapeo de eje ITP/GCT dedicados (seccion 1).
+- El motor real del ETL: Script ETL.txt (codigo TypeScript/Office
+  Script completo) - resuelve KC-MOC-002 (el motor NO es VBA, ver
+  seccion 7) y confirma con codigo real el comportamiento exacto de
+  titlefix, nullcontrol, concat/barconcat, replaceinreference (antes "no
+  verificado"), boolorigin (antes "no verificado"). Revela 2 reglas
+  nuevas no documentadas en CLAUDE.md (cloneto,
+  countIterations/countIterationList) y 2 operadores de condicion
+  nuevos (igualvalor, contains).
+- Dos documentos de asunciones/procedimientos del consultor original -
+  candidatos directos a resolver el ticket de cliente #7581. Ver
+  backlog P1-10.
+
+--------------------------------------------------------------------------------
+6. NUEVAS QUERIES
+--------------------------------------------------------------------------------
+
+Ninguna. La reconciliacion SQL confirmo que el 100% del contenido del
+zip de SQL ya esta versionado en el repositorio.
+
+--------------------------------------------------------------------------------
+7. CONFLICTOS
+--------------------------------------------------------------------------------
+
+KC-AP-001  | antes: OPEN sin caracterizar | despues: OPEN, bien caracterizado
+KC-MOC-002 | antes: OPEN                  | despues: RESOLVED (motor = Office Script, no VBA)
+KC-ITP-003 | antes: OPEN (informativo)    | despues: OPEN (informativo, mas preciso)
+
+--------------------------------------------------------------------------------
+8. OQ-ETL-01
+--------------------------------------------------------------------------------
+
+RESOLVED. Dos mecanismos independientes alimentan
+CS_HistoricalDrillAttendees:
+
+- Hoja MapeoSims, fila 27 (CampoOrigen=Asistentes): Adaptacion=No ->
+  passthrough directo del texto libre "Asistentes" de DB_OrigenSim.
+- Hojas Mapeo_asistentes/Mapeo_asistentes_EXT
+  (CampoOrigen=NombreAsistente, Adaptacion=Si,
+  Transformation From=Asis_concat): concatenacion fila a fila (una por
+  asistente) via la regla concat, que ANADE (no sobrescribe) al valor ya
+  presente, separador \r\n por defecto.
+
+Confianza: alta. Orden exacto de ejecucion y deduplicacion entre ambos
+mecanismos queda como item residual de baja prioridad (backlog P1-09).
+
+--------------------------------------------------------------------------------
+9. OQ-ETL-02
+--------------------------------------------------------------------------------
+
+RESOLVED. Hoja MapeoSims, fila 27 (CampoOrigen=Duracion, destino real
+CS_Duration): Adaptacion=No -> PASSTHROUGH DIRECTO, SIN RECOMBINACION.
+
+La hoja CalculoHorasDiasMinutos (candidata identificada en Sprint 8.8)
+NO alimenta CS_Duration de Drills - alimenta 4 campos separados de un
+objeto distinto (List of Activities, BCM), con formulas confirmadas: mes
+fijo de 30 dias, redondeo a 5 minutos. Confianza: alta.
+
+--------------------------------------------------------------------------------
+10. BACKLOG ACTUALIZADO
+--------------------------------------------------------------------------------
+
+Prioridad | Items Sprint 8.8 | Cerrados en 8.8.1 | Abiertos tras 8.8.1
+P1        | 8                | 3                  | 7 (5 originales + 2 nuevos)
+P2        | 6                | 0                  | 6
+P3        | 4                | 1                  | 5 (3 originales + 2 nuevos)
+P4        | 1                | 0                  | 2 (1 original + 1 nuevo)
+TOTAL     | 19               | 4                  | 20
+
+No se recalculo ninguna cobertura global (Operational Mapping Coverage)
+- sigue sin metodologia suficiente para publicarse de forma honesta.
+Registro completo de cambios en
+docs/07-developer-guide/moeve-mapping-backlog.md seccion 0.
+
+--------------------------------------------------------------------------------
+11. ESTADO DE LOS DOCUMENTOS SPRINT 8.1
+--------------------------------------------------------------------------------
+
+knowledge-traceability-matrix.md
+  Decision: KEEP_AND_UPDATE - ACTUALIZADO en este sprint (filas
+  CS_Duration y CS_HistoricalDrillAttendees de amarillo a verde).
+
+drills-csv-contract.md
+  Decision: KEEP_AND_UPDATE (no editado todavia) - sigue siendo correcto,
+  cambiara cuando el conocimiento resuelto se convierta en codigo.
+
+knowledge-coverage-matrix.md
+  Decision: KEEP_AND_UPDATE (no editado todavia) - su alcance no cambia
+  por este sprint, ya usa metodologia correcta.
+
+Informe-Knowledge-Audit-EMF.md / .txt (2026-07-27)
+  Decision: ARCHIVE - informe de ejecucion puntual, registro historico
+  inmutable. Su tabla de cobertura usa "Template Contract 8/36" como
+  denominador, superado por project-contract-model.md (Sprint 8.2,
+  posterior). No es un error, es metodologia superada - no se edita
+  retroactivamente un informe fechado.
+
+Ninguno de los 5 se borra ni se commitea en este sprint.
+
+--------------------------------------------------------------------------------
+12. READINESS PARA SPRINT 9.0
+--------------------------------------------------------------------------------
+
+No se ejecuta workspace readiness contra recursos reales (no existe
+todavia un manifest real de Moeve).
+
+Requisito                        | Estado
+ETL disponibles                  | OK - 11/11 inventariados
+CSV Operational disponibles      | OK - 30 CSV + 2 XLSX inventariados
+CSV Template disponibles         | PARCIAL - 14, faltan bypass/ops/ap
+Mappings disponibles             | OK - incl. workbooks de eje dedicados
+Errors disponibles               | PARCIAL - 28 tickets, solo 3 clasificados
+SQL disponibles                  | OK - 48 queries, reconciliadas 100%
+Knowledge governance establecido | OK
+Conflictos P1 conocidos          | OK - 3 registrados (1 resuelto, 2 abiertos)
+Workspace manifest real pendiente| NO - solo ap materializado como ejemplo
+Project Contracts identificables | OK - 8/9 modulos (falta profundidad celda en 7)
+
+CLASIFICACION: NOT_READY_FOR_ACTIVATION
+
+Razon: el conocimiento de gobierno esta listo y el inventario fisico
+esta completo, pero faltan 2 cosas estructurales: (1) manifest de
+workspace real de Moeve no declarado con detalle columna-a-columna;
+(2) 7 de 9 modulos sin regla de campo confirmada a nivel de celda. Esto
+NO es una cuestion de autorizacion SQL (eso lo rige sql-execution-guard.md,
+sin relacion con este sprint).
+
+--------------------------------------------------------------------------------
+13. TESTS
+--------------------------------------------------------------------------------
+
+pytest tests/ -v -> 714 passed, 7 skipped (identico antes y despues).
+No se modifico ni se anadio codigo funcional.
+
+--------------------------------------------------------------------------------
+14. GIT STATUS --SHORT
+--------------------------------------------------------------------------------
+
+ M .claude/settings.local.json
+?? config/knowledge/
+?? docs/01-architecture/drills-csv-contract.md
+?? docs/01-architecture/knowledge-coverage-matrix.md
+?? docs/01-architecture/knowledge-source-governance.md
+?? docs/01-architecture/knowledge-traceability-matrix.md
+?? docs/01-architecture/mapping-governance.md
+?? docs/07-developer-guide/moeve-mapping-backlog.md
+?? docs/07-developer-guide/moeve-source-inventory.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.md
+?? reports/executions/2026-07-27/Informe-Knowledge-Audit-EMF.txt
+?? reports/executions/2026-08-12/
+
+.claude/settings.local.json es configuracion de permisos de sesion,
+ajena a ambos sprints - no se incluye en ninguna propuesta de commit.
+
+--------------------------------------------------------------------------------
+15. GIT DIFF --STAT
+--------------------------------------------------------------------------------
+
+ .claude/settings.local.json | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+(unico archivo con diff - todo lo demas es ??, sin versionar todavia).
+git diff --check: sin salida, 0 problemas de espacio en blanco.
+
+--------------------------------------------------------------------------------
+16. PROPUESTA DE COMMITS (COMBINADA 8.8 + 8.8.1, NO EJECUTADOS)
+--------------------------------------------------------------------------------
+
+Sprint 8.8 quedo sin commitear por diseno. Sprint 8.8.1 modifico varios
+de los archivos que 8.8 habia creado antes de que existiera ningun
+commit - por lo que la estrategia logica es COMBINAR ambos sprints en la
+misma serie de commits:
+
+1. Mapping governance: docs/01-architecture/mapping-governance.md
+   (contenido de 8.8 + cierre de 8.8.1 en un unico archivo coherente),
+   docs/01-architecture/knowledge-source-governance.md.
+2. Moeve source inventory / knowledge:
+   docs/07-developer-guide/moeve-source-inventory.md,
+   docs/07-developer-guide/moeve-mapping-backlog.md,
+   config/knowledge/moeve/ap/ (contenido ya actualizado por 8.8.1).
+3. Sprint 8.1 - actualizacion de conocimiento:
+   docs/01-architecture/knowledge-traceability-matrix.md.
+4. Codigo generico nuevo: ninguno en 8.8 ni en 8.8.1.
+5. Documentacion e informes: los 2 informes de Sprint 8.8 + los 2 de
+   Sprint 8.8.1 (este informe).
+6. Decision pendiente, NO incluida en ningun commit todavia: los 5
+   documentos de Sprint 8.1 restantes quedan clasificados (seccion 11)
+   pero no se incluyen hasta que el usuario confirme.
+
+Ningun dato real del workspace externo se incluye en ninguno de los
+commits propuestos.

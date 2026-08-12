@@ -1,0 +1,165 @@
+# Subconjunto del inventario global (docs/07-developer-guide/moeve-source-inventory.md)
+# relevante para el módulo ap. Metadata únicamente -- ningún dato real de
+# fila. Ver docs/01-architecture/mapping-governance.md para el esquema.
+
+client_id: moeve
+project_id: moeve
+module_id: ap
+
+sources:
+  - source_document_id: c003_actionplans_tool
+    category: EVIDENCE
+    type: historical_migration_tool
+    original_filename: "C:\\Users\\EduardoVelásquez\\Desktop\\C003-ActionPlans-Tool-v3\\ (no es un archivo único -- ver nota)"
+    scope: >
+      Piloto ITP_II2 (NumFase=3) + 8 flujos genéricos (EVT_NEW, EVT_OLD,
+      IPS, SIMS, OPS, SM, HAZOPS, OTROS) sobre
+      Prevencion.dbo.ITP_ACCIONES_CORRECTORAS. Herramienta nativa
+      (T-SQL + PowerShell + Python), no Excel, no runtime del EMF.
+    source_status: HISTORICAL_UNVERIFIED
+    note: >
+      Ver docs/07-developer-guide/c003-knowledge-adoption.md para el
+      registro completo (Sprint 8.9). NO integrado, NO ejecutado. 30
+      reglas reconstruidas por lectura estática de código. La ruta
+      absoluta anterior no es la identidad de la fuente -- solo se cita
+      aquí por transparencia sobre dónde vive físicamente, fuera de
+      EMF_DATA_ROOT y fuera de este repositorio.
+
+  - source_document_id: etl:ap_gct_new_sitecan
+    category: ETL
+    original_filename: "ETL- AP_GCT_NEW_SITECAN.xlsx"
+    size_bytes: 62968997
+    mtime: "2026-07-28"
+    scope: "Action Plans de origen MOC/GCT (hojas CT_ACCIONES_*)"
+    source_status: CURRENT_UNVERIFIED
+    key_sheets:
+      - {name: Index, mapping_like: true}
+      - {name: "Exportación eje", mapping_like: true, note: "catálogo vivo, mismo patrón que First_Axis"}
+      - {name: MapeoEje_uorg, mapping_like: true, note: "resolución IDUnidadOrg -> eje, patrón DatoOrigen/DatoDestino/EsCondicion/ReglaEspecial/Parametro"}
+      - {name: MAP-AP-CR, mapping_like: true, note: "regla de campo principal, patrón CampoOrigen/Field Destiny XML/.../Transformation From"}
+      - {name: Map_UserEnablon, mapping_like: true, note: "cloneorigin con lookup BUSCARX previo -- ver P3-08 en backlog"}
+      - {name: MAP-ITPOLD-EVT, sheet_state: hidden, note: "huérfana, patrón confirmado en CLAUDE.md"}
+      - {name: MAP-ITPOLD-IMP, sheet_state: hidden}
+      - {name: MAP-ITPOLD-MED, sheet_state: hidden}
+      - {name: MAP-ITPOLD-MED-2, sheet_state: hidden}
+    internal_parts:
+      has_vba_project: false
+      has_connections_xml: true
+      query_table_parts: 11
+      external_link_parts: 1
+
+  - source_document_id: etl:ap_con_ajuste_entidad_new_sietcan
+    category: ETL
+    original_filename: "ETL- AP-Con Ajuste Entidad_NEW_SIETCAN (1).xlsx"
+    size_bytes: 361449300
+    mtime: "2026-08-10"
+    scope: "Action Plans de origen ITP-genérico (hojas ITP_ACCIONES_EV_new/old/IPS/SIMS/OPS/SM/HAZ/OTROS)"
+    source_status: HISTORICAL
+    key_sheets:
+      - {name: Index, mapping_like: true}
+      - {name: Entidades_Mapeo, mapping_like: false, note: "mecanismo estático, ya marcado desactualizado en CLAUDE.md"}
+      - {name: MAP-AP, mapping_like: true}
+      - {name: MAP-ITPOLD-EVT, sheet_state: hidden}
+      - {name: MAP-ITPOLD-IMP, sheet_state: hidden}
+      - {name: MAP-ITPOLD-MED, sheet_state: hidden}
+      - {name: MAP-ITPOLD-MED-2, sheet_state: hidden}
+    internal_parts:
+      has_vba_project: false
+      has_connections_xml: true
+      query_table_parts: 15
+      external_link_parts: 0
+
+  - source_document_id: csv_operational:action_plans_10082026_163
+    category: CSV_OPERATIONAL
+    original_filename: "Action Plans-10082026-163.csv"
+    size_bytes: 1390094
+    encoding: utf-8-sig
+    delimiter: ";"
+    n_columns: 33
+    source_status: CURRENT_UNVERIFIED
+
+  - source_document_id: csv_operational:action_plans_10082026_2
+    category: CSV_OPERATIONAL
+    original_filename: "Action Plans-10082026_2.csv"
+    size_bytes: 1135782
+    encoding: utf-8-sig
+    delimiter: ";"
+    n_columns: 31
+    source_status: CURRENT_UNVERIFIED
+
+  - source_document_id: csv_operational:action_plans_10082026_3
+    category: CSV_OPERATIONAL
+    original_filename: "Action Plans-10082026_3.csv"
+    size_bytes: 401958
+    encoding: utf-8-sig
+    delimiter: ";"
+    n_columns: 31
+    source_status: CURRENT_UNVERIFIED
+
+  - source_document_id: sql:acciones_correctoras
+    category: SQL
+    original_filename: "sql/source_queries/AP/Acciones_correctoras.sql"
+    source_status: CURRENT_UNVERIFIED
+    note: "Ya versionada en el repositorio -- ver Fase 11 del inventario global."
+
+  - source_document_id: mapping:onedrive_2_12-8-2026_zip
+    category: MAPPING
+    original_filename: "OneDrive_2_12-8-2026.zip"
+    source_status: REFERENCE
+    note: >
+      Inspeccionado en Sprint 8.8.1 (autorización recibida). Contiene,
+      entre otros, mapeo_itp_eje:mapeo_itp_primer_eje_v4 -- el workbook
+      del que Entidades_Mapeo parece ser una instantánea de valores. Ver
+      docs/07-developer-guide/moeve-source-inventory.md § 7 y
+      knowledge-conflicts.yaml (KC-AP-001, status_note_8_8_1). SHA-256 y
+      contenido íntegro documentados ahí -- no se copió a Git ningún
+      dato real, solo metadata e identidad de hoja.
+
+  - source_document_id: mapping:mapeo_itp_primer_eje_v4
+    category: MAPPING
+    original_filename: "Mapeos del Eje-ITP/Mapeo ITP primer eje enablon_revisado _final1 (version 4).xlsx"
+    container: mapping:onedrive_2_12-8-2026_zip
+    source_status: HISTORICAL
+    note: >
+      Workbook dedicado y versionado ("version 4", "final1") de mapeo
+      del primer eje para ITP-genérico. Hoja MAPEOFINAL (681 filas,
+      mismo recuento que inputs/entity_catalog/entidades_mapeo_ANTIGUO_referencia_historica.csv)
+      contenido verificado idéntico, fila a fila, a Entidades_Mapeo
+      embebido en el ETL de Bypass. Hoja "Eje final 2" (3038 filas) es
+      un catálogo estilo First_Axis. Hoja "EJE SITE CANARIAS (V1
+      oct2025)" es la re-numeración específica de Site Canarias. No se
+      confirma que los ETL de ámbito ITP-genérico se hayan re-sincronizado
+      desde esta versión después de construida.
+
+  - source_document_id: mapping:mapeo_gct_match_uorg_entidad
+    category: MAPPING
+    original_filename: "Mapeos Eje - GCT/260311 Mapeo gct Enablon-Match UORG ENTIDAD.xlsx"
+    container: mapping:onedrive_2_12-8-2026_zip
+    source_status: CURRENT_UNVERIFIED
+    note: >
+      Hoja "Exportación eje" con contenido idéntico, fila a fila, a la
+      hoja "Exportación eje" embebida en ap_gct/moc_m_new/moc_newcolumns
+      -- es la fuente de la que esas 3 ETL toman su instantánea del
+      catálogo. Confirma que el mecanismo de catálogo vivo de GCT tiene
+      un origen documental propio y mantenido, no solo una copia
+      embebida sin trazabilidad.
+
+  - source_document_id: sql_engine:script_etl_office_script
+    category: EVIDENCE
+    original_filename: "Documentos de explicación de los transformadores/Script ETL.txt"
+    container: mapping:onedrive_2_12-8-2026_zip
+    source_status: CURRENT_VERIFIED
+    note: >
+      Código fuente completo (TypeScript / Office Scripts, ExcelScript.Workbook
+      API) del motor real que ejecuta todas las hojas MAP-*/Mapeo_* de
+      todos los ETL de Moeve -- NO es VBA (resuelve KC-MOC-002, ver
+      mapping-governance.md § 8). Confirma con código real el
+      comportamiento exacto de titlefix, nullcontrol, concat/barconcat,
+      replaceinreference (antes "no verificado"), boolorigin (antes "no
+      verificado"), y revela 2 reglas no documentadas en CLAUDE.md:
+      cloneto, countIterations/countIterationList, y 2 operadores de
+      condición no documentados: igualvalor, contains.
+
+# No hay CSV_TEMPLATE para ap en este workspace -- ver
+# moeve-source-inventory.md § 2 ("gap de evidencia").
+templates: []

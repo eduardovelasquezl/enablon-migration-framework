@@ -1,0 +1,465 @@
+==========================================================================
+INFORME DE EJECUCION -- SPRINT 8.1: KNOWLEDGE COVERAGE & TRACEABILITY AUDIT
+==========================================================================
+
+Fecha: 2026-07-27 Rama: feature/drills-filtered-exports Alcance: Auditoria documental y de codigo unicamente. Fuentes permitidas y efectivamente usadas: src/, config/, docs/, tests/. No se ejecuto SQL. No se ejecuto el pipeline. No se recupero documentacion externa. No se creo ningun workspace. No se modifico configuracion. No se creo ningun commit.
+
+================================================================
+0. Objetivo principal -- respuesta directa
+================================================================
+
+  NOTA: **"¿Puede el EMF explicar completamente como construye el CSV final de
+  NOTA: Drills sin necesidad de consultar los ETL originales?"**
+
+Respuesta: si, para las 8 columnas que el prototipo genera hoy -- no, para las 28 columnas reales restantes (26 de ellas por decision de alcance ya documentada, 2 por una laguna de documentacion descubierta en esta misma auditoria).
+
+Evidencia que sostiene el "si" parcial: las 8 columnas generadas por src/export/prototype/drills/pipeline.py tienen, cada una, una funcion de transformacion ejecutable y testeada (transformations.py/mappings.py), un evidence_id propio en config/exports/drills.yaml, y -- en 7 de los 8 casos -- una traza de conocimiento independiente ya registrada en docs/specifications/v1.0/export/evidence/traceability_catalog.yaml con trace_status: fully_traced, calculada antes de escribir una sola linea de codigo de este prototipo. El codigo no depende de reabrir el ETL para producir esas 8 columnas -- la evidencia ya fue extraida una vez y congelada en YAML/codigo (reference_data de drills.yaml). Ver docs/01-architecture/drills-csv-contract.md y docs/01-architecture/knowledge-traceability-matrix.md para el detalle campo a campo.
+
+================================================================
+1. Knowledge Coverage Matrix
+================================================================
+
+Ver docs/01-architecture/knowledge-coverage-matrix.md (14 areas evaluadas: 8 IMPLEMENTADO, 5 IMPLEMENTADO PARCIALMENTE, 1 PENDIENTE, 0 NO APLICA).
+
+================================================================
+2. Dependencias reales del Framework (leidas del codigo, no listadas por existencia)
+================================================================
+
+  ---
+  Archivo externo: sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql
+  Modulo consumidor: src/export/prototype/drills/extractor.py
+  Funcion: extract_drills() -> config.source.sql_path.read_text()
+  Cuando se usa: Siempre, etapa query, toda ejecucion sample/full
+  Obligatorio/Opcional: Obligatorio -- config.py::load_drills_config lanza FileNotFoundError si falta
+  Tipo: DEPENDENCIA OPERATIVA
+  ---
+  Archivo externo: inputs/entity_catalog/entidades_mapeo_ANTIGUO_referencia_historica.csv
+  Modulo consumidor: src/export/prototype/drills/mappings.py
+  Funcion: get_entity_catalog() -> load_entity_catalog()
+  Cuando se usa: Siempre, etapa transform_and_export, antes de iterar filas
+  Obligatorio/Opcional: Obligatorio -- FileNotFoundError si falta
+  Tipo: DEPENDENCIA OPERATIVA
+  ---
+  Archivo externo: .env (credenciales SQL)
+  Modulo consumidor: src/db/connection.py (via src/db/query_runner.py, invocado por extractor.py)
+  Funcion: load_dotenv() + construccion de conexion SQLAlchemy
+  Cuando se usa: Siempre que se ejecuta una query real
+  Obligatorio/Opcional: Obligatorio para ejecucion real (no para tests, que usan monkeypatch)
+  Tipo: DEPENDENCIA OPERATIVA
+  ---
+  Archivo externo: Drills-22072026-41.csv (CSV historico, resuelto via DataWorkspace desde Sprint 7)
+  Modulo consumidor: pipeline.py::_resolve_historical_csv_path, comparison.py::build_comparison_report
+  Funcion: Llamada tras escribir el CSV, antes de issues.jsonl
+  Cuando se usa: Solo si EMF_DATA_ROOT esta declarado Y el fichero existe en el workspace
+  Obligatorio/Opcional: Opcional -- su ausencia nunca detiene el pipeline (comparison_report.yaml simplemente no se genera)
+  Tipo: DEPENDENCIA DE COMPARACION (no operativa, no documental)
+  ---
+  Archivo externo: ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx
+  Modulo consumidor: Ninguno -- verificado por Grep sin resultados de read_excel/openpyxl en src/export/prototype/drills/*.py
+  Funcion: --
+  Cuando se usa: Nunca, en ninguna ejecucion del pipeline
+  Obligatorio/Opcional: No aplica en tiempo de ejecucion
+  Tipo: DEPENDENCIA DOCUMENTAL (se leyo UNA VEZ, manualmente, fuera del pipeline, para poblar reference_data de drills.yaml; no se vuelve a leer)
+  ---
+  Archivo externo: config/modules.yaml
+  Modulo consumidor: Ninguno en tiempo de ejecucion -- unica mencion es un comentario de texto en mappings.py:3 (Ver config/modules.yaml:84 como referencia humana)
+  Funcion: --
+  Cuando se usa: Nunca (no hay load_yaml("config/modules.yaml") en ningun fichero de src/export/prototype/drills/)
+  Obligatorio/Opcional: No aplica
+  Tipo: DEPENDENCIA DOCUMENTAL
+
+Conclusion de Fase 2: el pipeline de Drills tiene exactamente 3 dependencias operativas reales (query SQL, catalogo de entidad, .env), 1 dependencia de comparacion opcional (CSV historico), y 2 dependencias puramente documentales que el codigo nunca lee en tiempo de ejecucion (ETL, modules.yaml). Ninguna ejecucion del pipeline de Drills --sample o full-- necesita abrir el ETL original.
+
+================================================================
+3. Contrato completo del CSV final de Drills
+================================================================
+
+Ver docs/01-architecture/drills-csv-contract.md -- 8 columnas implementadas con contrato campo a campo completo; 28 columnas reales restantes clasificadas (26 excluidas con motivo, 2 sin ninguna entrada de contrato -- ver Fase 6).
+
+================================================================
+4. Inventario completo de campos estandar (no-CS_) del CSV real
+================================================================
+
+11 columnas no-CS_ de las 36 reales:
+
+  ---
+  Campo: Reference
+  Implementado: Si
+  Estado de trazabilidad: [VERDE]
+  ---
+  Campo: StartingDate
+  Implementado: Si
+  Estado de trazabilidad: [VERDE]
+  ---
+  Campo: NameEN/NameFR/NameES/NameZH/NameBR (5)
+  Implementado: No
+  Estado de trazabilidad: [ROJO]
+  ---
+  Campo: EstimatedLoss
+  Implementado: No
+  Estado de trazabilidad: [ROJO] (sin contrato, ver Fase 6)
+  ---
+  Campo: RealLoss
+  Implementado: No
+  Estado de trazabilidad: [ROJO] (sin contrato, ver Fase 6)
+  ---
+  Campo: GroupsList
+  Implementado: No
+  Estado de trazabilidad: [ROJO]
+  ---
+  Campo: Id
+  Implementado: No (por diseno -- Enablon lo asigna despues)
+  Estado de trazabilidad: [VERDE] (exclusion totalmente entendida)
+
+2 de 11 implementados; ninguno de los 9 restantes tiene mecanismo SQL/ETL confirmado (a diferencia de varios campos CS_ excluidos, que si lo tienen -- ver Fase 5).
+
+================================================================
+5. Inventario completo de campos CS_ (25 de las 36 columnas reales)
+================================================================
+
+  ---
+  Campo CS_: CS_Typology
+  Documentado: Si
+  Mapping: fields[0]
+  Validacion: must_resolve_or_use_documented_default
+  Default: "NADA"
+  Lookup: typology_lookup
+  ETL: fully_traced
+  Estado: [VERDE]
+  ---
+  Campo CS_: CS_HistoricalOriginID
+  Documentado: Si
+  Mapping: fields[3]
+  Validacion: required_non_null
+  Default: Ninguno
+  Lookup: Ninguno
+  ETL: fully_traced
+  Estado: [VERDE]
+  ---
+  Campo CS_: CS_Letter
+  Documentado: Si
+  Mapping: fields[4]
+  Validacion: warn_if_unresolved
+  Default: "NOLETTER-WRONG" (solo si vacio)
+  Lookup: letter_lookup
+  ETL: fully_traced
+  Estado: [VERDE]
+  ---
+  Campo CS_: CS_ImpactedEntities
+  Documentado: Si
+  Mapping: fields[5]
+  Validacion: warn_if_unresolved_or_conflicting
+  Default: Ninguno
+  Lookup: entity_catalog
+  ETL: fully_traced
+  Estado: [VERDE]
+  ---
+  Campo CS_: CS_WorkflowStatus
+  Documentado: Si
+  Mapping: fields[6]
+  Validacion: warn_if_unresolved
+  Default: Ninguno confirmado
+  Lookup: workflow_status_lookup
+  ETL: fully_traced
+  Estado: [VERDE]
+  ---
+  Campo CS_: CS_HistoricalDataOrigin
+  Documentado: Si
+  Mapping: fields[7]
+  Validacion: constant_literal
+  Default: Literal fijo
+  Lookup: Ninguno
+  ETL: evidence_id posiblemente reutilizado de otra traza (ver § 6)
+  Estado: [AMARILLO]
+  ---
+  Campo CS_: CS_Duration
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: partially_traced, OQ-ETL-02
+  Estado: [AMARILLO]
+  ---
+  Campo CS_: CS_HistoricalUserId
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado (PII, por diseno)
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: fully_traced en ETL
+  Estado: [AMARILLO]
+  ---
+  Campo CS_: CS_HistoricalUserName
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: Sin trace_id propio
+  Estado: [AMARILLO]
+  ---
+  Campo CS_: CS_HistoricalDrillAttendees
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: partially_traced, OQ-ETL-01
+  Estado: [AMARILLO]
+  ---
+  Campo CS_: CS_HistoricalDrillResponsibleName
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: Sin trace_id propio
+  Estado: [AMARILLO]
+  ---
+  Campo CS_: CS_HistoricalAttachedFiles
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: Sin trace_id
+  Estado: [ROJO]
+  ---
+  Campo CS_: CS_OtherContacts / CS_ExternalParticipants / CS_OtherParticipants (3)
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: Sin trace_id
+  Estado: [ROJO]
+  ---
+  Campo CS_: CS_HistoricalRecord
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: Sin trace_id
+  Estado: [ROJO]
+  ---
+  Campo CS_: CS_EnvConsequences...CS_ObservationsCommunication (9)
+  Documentado: Si (en excluded_columns)
+  Mapping: No implementado
+  Validacion: --
+  Default: --
+  Lookup: --
+  ETL: Sin trace_id
+  Estado: [ROJO]
+
+Respuestas explicitas a las 3 preguntas de Fase 5:
+
+  1. ¿Existe algun campo CS_ que llegue al CSV sin contrato? No. Los 6 campos CS_ que si llegan al CSV generado (CS_Typology, CS_HistoricalOriginID, CS_Letter, CS_ImpactedEntities, CS_WorkflowStatus, CS_HistoricalDataOrigin) tienen los 6 una entrada completa en fields de drills.yaml -- OUTPUT_COLUMNS en pipeline.py es una lista fija que coincide exactamente con esas 6 mas Reference/StartingDate, verificado por lectura directa del codigo.
+  2. ¿Existe algun CS_ soportado pero no documentado? No. Los 6 implementados tienen evidence_id propio; ninguno carece de documentacion.
+  3. ¿Existe algun CS_ documentado pero no implementado? Si -- 19 de 25. Todos con motivo explicito en excluded_columns (no es una omision silenciosa) salvo por el matiz de CS_HistoricalDataOrigin (implementado, pero con la anomalia de cita cruzada de § 6).
+
+================================================================
+6. Campos huerfanos
+================================================================
+
+En el CSV generado: cero. Las 8 columnas que produce el prototipo tienen las 8 una entrada completa en fields -- verificado por inspeccion directa de OUTPUT_COLUMNS (pipeline.py:58-67) contra config.fields (config.py::load_drills_config, que falla con ValueError si faltan claves obligatorias en cualquier entrada). No hay ninguna columna sin mapping, sin transformacion o sin validacion en la salida real.
+
+Hallazgo adyacente (no un huerfano de salida, sino de contrato): 2 de las 36 columnas reales de Enablon --EstimatedLoss y RealLoss-- no tienen ninguna entrada en config/exports/drills.yaml, ni en fields ni en excluded_columns, y tampoco aparecen en ningun trace_id de traceability_catalog.yaml. A diferencia de las otras 26 columnas excluidas (todas con una razon documentada, aunque sea "sin columna SQL identificada"), estas 2 no tienen ni siquiera esa constancia -- es una brecha real de completitud del Mapping Model, descubierta por esta auditoria, no heredada de un analisis anterior. No implica ningun riesgo operativo hoy (el prototipo nunca las genera), pero si una brecha de documentacion pendiente de cerrar antes de declarar el Template Contract "completo" en cualquier sentido formal.
+
+Anomalia adicional detectada (evidence_id reutilizado): el campo implementado CS_HistoricalDataOrigin declara evidence_id: "etl_transform:simulacros.multifielduser.historical_user_lookup" en config/exports/drills.yaml. Ese mismo identificador aparece en traceability_catalog.yaml como transformation_ids de la traza trace:simulacros.drills.cs_historicaluserid -- que documenta el mecanismo de un campo distinto (CS_HistoricalUserId, no implementado). No se puede confirmar con la evidencia disponible si esto es una reutilizacion deliberada (el mecanismo "MultiField_User" podria, plausiblemente, producir a la vez el identificador de usuario Y una descripcion del origen historico) o una cita incorrecta heredada de un incremento anterior. Se deja marcado como pregunta abierta, no como error confirmado -- no se asume ninguna de las dos posibilidades.
+
+================================================================
+7. Cobertura razonada por area
+================================================================
+
+  ---
+  Area: Query Extraction
+  Cobertura: Alta -- unica tabla, sin joins, hash de integridad, ejecutado realmente
+  Evidencia: extractor.py, ejecucion 2026-07-23
+  Riesgos: Ninguno identificado para modo sample; modo full contra SQL real nunca probado a traves del Core (framework-core-v1.md § 19)
+  Pendiente: Ejecucion real en modo full
+  ---
+  Area: Canonical Model
+  Cobertura: Baja -- solo diseno conceptual, sin tipos implementados
+  Evidencia: canonical-data-model.md (Status: Proposed)
+  Riesgos: Ninguno urgente -- Drills funciona sin el; riesgo aparece solo si se necesita reutilizar el pipeline para un segundo objeto sin CDM
+  Pendiente: Implementacion de CanonicalRecord/CanonicalField/Provenance -- explicitamente diferida (principio 8, "sin consumidor real todavia")
+  ---
+  Area: Mappings
+  Cobertura: Alta para Drills, nula como motor generico
+  Evidencia: transformations.py/mappings.py (ejecutable); mapping-specification.md (Proposed, sin motor)
+  Riesgos: Bajo para Drills (funciona); alto para un segundo objeto, que reescribiria las mismas funciones en vez de reutilizar una especificacion declarativa
+  Pendiente: Motor de MappingRule/rule_type -- Fase P2 del roadmap EMF
+  ---
+  Area: Transformaciones
+  Cobertura: Alta
+  Evidencia: transformations.py, 28 tests unitarios
+  Riesgos: Bajo -- funciones puras, testeadas de forma aislada
+  Pendiente: Ninguno bloqueante
+  ---
+  Area: Lookups
+  Cobertura: Alta
+  Evidencia: reference_data + mappings.py, ejecucion real (93/100 entidades resueltas)
+  Riesgos: Catalogo de entidad usa una tabla deprecada (Entidades_Enablon_ITP) -- aceptado explicitamente para Simulacros, no para otros 4 objetos (OQ-ENT-04)
+  Pendiente: Confirmar OQ-ENT-04 antes de reutilizar el mismo mecanismo en bypass/eventos_antiguos/ops/safety_meetings
+  ---
+  Area: Template Contract
+  Cobertura: Media -- 8/36 columnas, con 2 sin ninguna entrada de contrato
+  Evidencia: drills-csv-contract.md
+  Riesgos: Bajo hoy (el prototipo no promete mas de 8); documentacion incompleta si se presenta como "contrato cerrado" sin aclarar las 28 restantes
+  Pendiente: Documentar EstimatedLoss/RealLoss en excluded_columns (minimo, no requiere nueva evidencia)
+  ---
+  Area: Validation
+  Cobertura: Alta para el CSV de salida, nula para data_quality_checks transversal
+  Evidencia: validator.py (ejecutable, testeado); config/validation_rules.yaml::data_quality_checks (sin motor)
+  Riesgos: Bajo para Drills (ya se valida antes/despues de escribir); alto si se asume que data_quality_checks ya protege algo -- no protege nada todavia
+  Pendiente: Conectar data_quality_checks a un motor ejecutable, o marcarlo explicitamente como "solo catalogo de referencia humana" en su propio YAML
+  ---
+  Area: Comparison
+  Cobertura: Alta
+  Evidencia: comparison.py, ejecutado realmente contra Drills-22072026-41.csv
+  Riesgos: Bajo -- opcional por diseno, nunca bloquea
+  Pendiente: Ninguno
+  ---
+  Area: Evidence
+  Cobertura: Alta
+  Evidencia: evidence/collector.py/workbook.py, ejecutado realmente
+  Riesgos: Bajo
+  Pendiente: Ninguno
+  ---
+  Area: Campos estandar
+  Cobertura: Baja-Media -- 2/11 implementados
+  Evidencia: drills-csv-contract.md § 4
+  Riesgos: Bajo (el prototipo nunca prometio mas)
+  Pendiente: Ninguno bloqueante -- decision de alcance, no carencia
+  ---
+  Area: Campos CS_
+  Cobertura: Media -- 6/25 implementados, 19 excluidos con motivo, 0 sin documentar
+  Evidencia: drills-csv-contract.md § 3, este informe § 5
+  Riesgos: Bajo -- ninguna exclusion es silenciosa
+  Pendiente: Cerrar OQ-ETL-01/OQ-ETL-02 si se decide ampliar alcance
+  ---
+  Area: Outputs
+  Cobertura: Alta
+  Evidencia: exporter.py/manifest.py, ejecucion real con hashes verificados
+  Riesgos: Bajo
+  Pendiente: Ninguno
+  ---
+  Area: Workspace
+  Cobertura: Alta
+  Evidencia: data_workspace.py, validado este mismo Sprint (9/9 categorias)
+  Riesgos: Bajo
+  Pendiente: Ninguno bloqueante
+
+================================================================
+8. ETL Gap Analysis
+================================================================
+
+¿Que conocimiento sigue dependiendo de los ETL?
+
+  ---
+  Clasificacion: No depende
+  Campos/areas: Las 8 columnas implementadas + su logica de negocio
+  Motivo: Evidencia ya extraida una vez y congelada en config/exports/drills.yaml/codigo -- ninguna ejecucion del pipeline necesita reabrir el ETL.
+  ---
+  Clasificacion: Depende parcialmente
+  Campos/areas: CS_Duration (OQ-ETL-02), CS_HistoricalDrillAttendees (OQ-ETL-01), CS_HistoricalUserId/UserName (mecanismo conocido, PII, no portado a codigo), CS_HistoricalDataOrigin (anomalia de evidence_id, § 6)
+  Motivo: El ETL ya documento el mecanismo (total o parcialmente), pero portar ese conocimiento a un fields/transformations.py ejecutable sigue pendiente.
+  ---
+  Clasificacion: Depende totalmente
+  Campos/areas: Las 5 columnas Name* (origen SQL de "Titulo" nunca confirmado), las 9 columnas de checklist (CS_EnvConsequences...CS_ObservationsCommunication), CS_OtherContacts/CS_ExternalParticipants/CS_OtherParticipants/GroupsList/CS_HistoricalAttachedFiles, CS_HistoricalRecord
+  Motivo: Ningun mecanismo SQL/ETL fue localizado en ningun incremento de analisis anterior -- reabrir el ETL (o una fuente equivalente) es la unica via conocida para avanzar, si se decide ampliar el alcance del prototipo.
+  ---
+  Clasificacion: No aplica / no depende de ETL en absoluto
+  Campos/areas: EstimatedLoss, RealLoss
+  Motivo: Ni siquiera el ETL las documenta explicitamente en los assessments ya realizados -- su ausencia no es "conocimiento en el ETL pendiente de portar", es una laguna de analisis completo (nueva).
+
+================================================================
+9. Recuperacion recomendada del material ETL/CSV/documentacion pendiente
+================================================================
+
+  ---
+  Material: Drills-22072026-41.csv (CSV historico real)
+  Clasificacion: IMPORTANTE
+  Justificacion: Habilita comparison_report.yaml (ya implementado y probado) -- mejora la confianza de cualquier ejecucion nueva, pero el pipeline funciona sin el (comparacion opcional). No es critico porque no bloquea ni sample ni full.
+  ---
+  Material: ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx
+  Clasificacion: UTIL
+  Justificacion: Permitiria cerrar OQ-ETL-01/OQ-ETL-02 (asistentes, duracion) y documentar Name*/checklist si se decide ampliar el alcance del prototipo mas alla de las 8 columnas actuales -- pero las 8 columnas ya implementadas no lo necesitan en absoluto.
+  ---
+  Material: ETL de bypass/eventos_antiguos/ops/safety_meetings (para resolver OQ-ENT-04)
+  Clasificacion: UTIL
+  Justificacion: Confirmaria si el uso del catalogo deprecado es igualmente aceptable en esos 4 modulos -- no afecta a Drills, que ya tiene esta cuestion resuelta explicitamente.
+  ---
+  Material: helpdesk_export_834_tickets.xlsx (incidencias del cliente)
+  Clasificacion: SOLO HISTORICO
+  Justificacion: Ya presente localmente, correlacionado con hallazgos tecnicos en CLAUDE.md -- no es un insumo que el pipeline de Drills consuma nunca.
+  ---
+  Material: Los 3 ficheros SQL sin usar (SQLQuery4.sql, SQLQuery6.sql, SQLQuery9.sql, Acciones correctoras.sql)
+  Clasificacion: NO NECESARIO (para Drills)
+  Justificacion: Ya identificados en drills-operational-mvp.md § 4 como pertenecientes a un futuro objeto Action Plans/actualizacion, no a este prototipo -- recuperarlos no aporta nada a Drills.Reference/CS_Typology/etc.
+  ---
+  Material: Cualquier ETL adicional solo para volver a verificar las 8 columnas ya implementadas
+  Clasificacion: NO NECESARIO
+  Justificacion: Estas 8 columnas ya tienen trace_status: fully_traced o decision funcional aprobada (AFD-DRILLS-REFERENCE-001) -- reabrir el Excel no anadiria certeza, solo repetiria un analisis ya cerrado.
+
+================================================================
+10. Riesgos -- si todos los ETL desaparecieran definitivamente
+================================================================
+
+  ---
+  Que se perderia: Capacidad de producir las 8 columnas ya implementadas
+  Impacto: Sin impacto
+  Justificacion: El conocimiento ya esta congelado en config/exports/drills.yaml (reference_data) y en codigo (transformations.py/mappings.py) -- el pipeline no vuelve a leer el ETL nunca.
+  ---
+  Que se perderia: Capacidad de auditar/verificar por que esas 8 columnas son correctas, desde cero
+  Impacto: Impacto bajo
+  Justificacion: Se perderia la posibilidad de re-derivar la evidencia desde la formula original, pero no la capacidad de operar -- los documentos de assessment (drills_entity_resolution_assessment.md, drills_reference_decision_package.md, traceability_catalog.yaml) ya son un resumen suficiente y versionado en Git, independiente del Excel.
+  ---
+  Que se perderia: Capacidad de resolver OQ-ETL-01/OQ-ETL-02 (asistentes, duracion)
+  Impacto: Impacto medio
+  Justificacion: Sin el ETL, no hay ninguna otra fuente conocida (SQL solo no basta -- las formulas de recombinacion viven en el propio Excel) para cerrar estas 2 preguntas; quedarian permanentemente partially_traced.
+  ---
+  Que se perderia: Capacidad de implementar las 22 columnas [ROJO] (checklist, Name*, adjuntos, CS_HistoricalRecord)
+  Impacto: Impacto alto
+  Justificacion: Ningun mecanismo SQL/ETL fue localizado -- sin el ETL, la unica via seria inventar la regla (prohibido explicitamente por CLAUDE.md) o declarar esas columnas permanentemente fuera de alcance.
+  ---
+  Que se perderia: Capacidad de resolver OQ-ENT-04 para los otros 4 modulos que comparten el mismo mecanismo de entidad
+  Impacto: Impacto medio (fuera del alcance de Drills, pero relevante al proyecto)
+  Justificacion: Sin el ETL de esos modulos, la pregunta queda abierta indefinidamente.
+  ---
+  Que se perderia: EstimatedLoss/RealLoss
+  Impacto: Impacto critico en terminos relativos -- es la unica laguna donde ni siquiera existe un punto de partida documental
+  Justificacion: Ya hoy, sin que desaparezca nada, no hay ninguna evidencia de estas 2 columnas -- su "impacto de perdida" es, en la practica, ya el escenario actual.
+
+================================================================
+11. Recomendaciones
+================================================================
+
+  1. Documentar EstimatedLoss/RealLoss en excluded_columns (o iniciar su analisis si se decide ampliar el prototipo) -- la accion de menor esfuerzo y mayor cierre de esta auditoria, no requiere ETL ni SQL, solo una entrada de configuracion con motivo honesto (NO_ANALYSIS_PERFORMED o equivalente).
+  2. Aclarar la anomalia de evidence_id de CS_HistoricalDataOrigin (§ 6) -- confirmar con quien mantiene traceability_catalog.yaml si es una reutilizacion intencional o una cita heredada incorrecta.
+  3. Ninguna validacion falta para las 8 columnas ya implementadas -- el par pre-escritura/post-escritura (validator.py) ya cubre lo que el incremento actual necesita.
+  4. Ningun contrato falta para lo ya implementado -- si falta, explicitamente, el contrato de EstimatedLoss/RealLoss (punto 1).
+  5. Partes del Framework ya completamente desacopladas de Excel: el 99% del camino operativo de Drills (extraccion, transformacion, validacion, exportacion, comparacion, evidencia, workspace) -- ninguna de estas etapas lee un .xlsx en tiempo de ejecucion (verificado por Grep, § 2). El unico acoplamiento restante a Excel es conceptual y ya resuelto: los valores de reference_data se extrajeron una vez del ETL y ahora viven como datos versionados, no como dependencia activa.
+  6. No ampliar el alcance de Drills sin recuperar el ETL si se decide perseguir las 22 columnas [ROJO] -- no hay atajo: la evidencia SQL/ETL no existe todavia para esas columnas, y CLAUDE.md prohibe inventar reglas no documentadas.
+
+================================================================
+12. Acciones pendientes antes de recuperar la documentacion original
+================================================================
+
+  1. Confirmar con el usuario si EstimatedLoss/RealLoss deben clasificarse como excluidas ahora mismo (accion de configuracion, sin ETL) o si se prefiere investigarlas cuando se recupere el ETL.
+  2. Priorizar, si se recupera el ETL, resolver primero OQ-ETL-01 (asistentes) y OQ-ETL-02 (duracion) -- son las 2 unicas columnas partially_traced con mecanismo ya parcialmente confirmado, el menor esfuerzo de cierre.
+  3. No recuperar los ETL de bypass/eventos_antiguos/ops/safety_meetings solo para Drills -- son relevantes para OQ-ENT-04, una pregunta que no bloquea a Drills.
+  4. Aclarar la anomalia de evidence_id (§ 6, recomendacion 2) antes de asumir que CS_HistoricalDataOrigin esta tan solidamente trazado como los otros 5 campos CS_ implementados.
+
+================================================================
+Confirmaciones finales
+================================================================
+
+  * No se ejecuto SQL Server.
+  * No se ejecuto ningun sample ni full del pipeline.
+  * No se recupero ni se intento recuperar ningun ETL, CSV real ni documentacion externa.
+  * No se creo ningun workspace ni carpeta nueva.
+  * No se modifico ninguna configuracion (config/*.yaml, .env).
+  * No se creo ningun commit -- los 3 ficheros de docs/01-architecture/ y este informe quedan sin commitear, a la espera de revision.

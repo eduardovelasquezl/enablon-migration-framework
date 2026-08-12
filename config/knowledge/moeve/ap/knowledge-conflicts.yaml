@@ -1,0 +1,120 @@
+# KNOWLEDGE_CONFLICT registrados para el módulo ap. Esquema: ver
+# docs/01-architecture/mapping-governance.md § 4. Ninguno se resuelve
+# aquí -- se registran para revisión humana.
+#
+# Actualizado en Sprint 8.8.1 (Knowledge Closure) tras inspección
+# autorizada de Mappings/OneDrive_2_12-8-2026.zip -- ver
+# docs/07-developer-guide/moeve-source-inventory.md § 7 (actualizado) y
+# el informe de cierre de 8.8.1.
+
+conflicts:
+  - conflict_id: KC-AP-001
+    module_id: ap
+    rule_id_or_field: ap.entity_axis_resolution
+    source_a:
+      source_document_id: etl:ap_con_ajuste_entidad_new_sietcan
+      rule_revision: 1
+      summary: >
+        Mecanismo estático (Entidades_Mapeo), cubre AP de origen
+        ITP-genérico (7 submódulos: EVT_new, EVT_old, SIMS, IPS, OPS,
+        SM, HAZ, OTROS).
+    source_b:
+      source_document_id: etl:ap_gct_new_sitecan
+      rule_revision: 2
+      summary: >
+        Mecanismo dinámico en 2 pasos (MapeoEje_uorg + Exportación eje),
+        cubre solo AP de origen MOC/GCT.
+    impact: >
+      Si el mecanismo nuevo debía reemplazar también al ITP-genérico y
+      no lo hizo, el ETL "AP-Con Ajuste Entidad" (pese a llevar "Ajuste
+      Entidad" en el nombre del archivo) sigue dependiendo de un
+      catálogo ya confirmado obsoleto en otros módulos (CLAUDE.md) --
+      riesgo de repetir el patrón de infra-migración de La
+      Rábida/Palos que el Hallazgo #1 ya documentó en Eventos/
+      Inspecciones/MOC.
+    recommendation: >
+      Confirmar con el cliente/consultor si "AP-Con Ajuste Entidad"
+      debía migrar también al mecanismo MapeoEje_uorg y quedó
+      pendiente, o si el ajuste de entidad de ese ETL se hizo por otra
+      vía no capturada en la inspección de hoja+cabecera de este
+      sprint. Ver backlog P1-01.
+    human_review_required: true
+    status: "OPEN — CURRENT STATIC MECHANISM STRONGLY EVIDENCED"
+    status_note_checkpoint: >
+      Reformulación tras Checkpoint (post Sprint 8.9), sin cerrar el
+      conflicto ni elegir una decisión funcional definitiva -- ver
+      status_note_8_8_1 y status_note_8_9 abajo para la evidencia
+      completa. Se fija esta lectura porque las dos alternativas ya NO
+      son igual de probables con la evidencia acumulada:
+      (1) Entidades_Mapeo/MAPEOFINAL está confirmado, por 3 fuentes
+      independientes (el ETL, el workbook dedicado "version 4, final" de
+      Sprint 8.8.1, y C003 en Sprint 8.9), como el mecanismo real y
+      actualmente en uso para el ámbito ITP-genérico -- no un fragmento
+      residual ni una copia fragmentada, como sugería la lectura literal
+      de CLAUDE.md.
+      (2) No existe, en ninguna de las fuentes inspeccionadas en estos
+      tres sprints, evidencia observada de que el ámbito ITP-genérico se
+      haya resincronizado alguna vez con el mecanismo de catálogo vivo
+      (MapeoEje_uorg/Exportación eje) que sí adoptaron MOC y AP-GCT. La
+      ausencia de esa evidencia, tras 3 sprints de inspección
+      independiente, es en sí misma información -- no es "no hemos
+      mirado lo suficiente", es "no hay rastro de que haya ocurrido".
+      Lo que permanece abierto, y solo eso, es si existe una decisión
+      funcional posterior (del cliente o de un consultor) que apruebe o
+      corrija este estado y que simplemente no quedó materializada en
+      ningún artefacto inspeccionado -- eso solo puede confirmarlo el
+      cliente. No se decide aquí si Entidades_Mapeo es la fuente
+      correcta o si el ámbito ITP-genérico está desactualizado; se
+      documenta que es, de hecho, el mecanismo vigente en uso, con alta
+      confianza.
+    status_note_8_8_1: >
+      NO se cierra -- pero queda mucho mejor caracterizado. El ZIP de
+      Mappings contenía un tercer grupo de fuentes, independiente de los
+      ETL: "Mapeo ITP primer eje enablon_revisado_final1 (version 4).xlsx"
+      (dedicado a ITP-genérico) y 3 workbooks "Mapeos Eje - GCT" (dedicados
+      a GCT). Se confirmó, por comparación de contenido de fila (no
+      formula, dato real: mismo IDCentro=7/IDDepartamento=77/IDUnidadOrg=278,
+      "MC-Palos de la Frontera"/"CONTRATAS GENERICAS"/"MCPF Histórico"),
+      que la hoja Entidades_Mapeo embebida en el ETL de Bypass (y,
+      presumiblemente, en los otros 7 ETL que la tienen) es una
+      instantánea de valores de la hoja MAPEOFINAL de ese workbook ITP
+      "version 4" -- NO es un fragmento arbitrario sin relación, como
+      podría sugerir "están todas desactualizadas y son copias
+      fragmentadas" leído de forma literal. También se confirmó que la
+      hoja "Exportación eje" embebida en ap_gct/moc_m_new/moc_newcolumns
+      es una instantánea de valores de "260311 Mapeo gct
+      Enablon-Match UORG ENTIDAD.xlsx" (mismas filas CCE.01.03.01/02/03,
+      mismos Id 14-19).
+      Root cause más probable (no confirmado por el cliente todavía):
+      Entidades_Mapeo/MAPEOFINAL fue una entrega puntual ("version 4,
+      final") que, aun siendo real y una vez autoritativa, quedó fija en
+      el tiempo -- mientras que el mecanismo MapeoEje_uorg/Exportación eje
+      re-consulta un catálogo more-o-menos actualizado en cada
+      regeneración del ETL. Esto es coherente con el hallazgo ya
+      validado empíricamente en CLAUDE.md (42-59% "no catalogado" al usar
+      Entidades_Mapeo directamente) -- el mapeo "version 4" ya había
+      quedado desfasado frente al First_Axis vigente en el momento en que
+      se probó, no porque nunca fuera real, sino porque el eje de Enablon
+      siguió evolucionando después de esa entrega.
+      Sigue sin confirmarse si los 7 ETL de ámbito ITP-genérico (incluido
+      AP-Con Ajuste Entidad) llegaron a re-sincronizarse desde este
+      workbook en algún momento posterior a "version 4", o si quedaron
+      congelados en esa entrega. Backlog P1-01 actualizado, no cerrado.
+    status_note_8_9: >
+      Tercera confirmación independiente, esta vez desde C003 (Sprint
+      8.9, herramienta nativa de reemplazo del ETL, no Excel):
+      Extract-CommonConfiguration.py apunta explícitamente, por nombre
+      de hoja, a "Entidades_Mapeo" del Excel ETL- AP-0308.xlsx (columnas
+      A=CenterId, G=OrganizationalUnitId con NULL->-1, K=Code) -- ni
+      siquiera la reimplementación nativa más reciente de Action Plans
+      adoptó el mecanismo de catálogo vivo (MapeoEje_uorg/Exportación
+      eje). Los valores de Code extraídos (p.ej. "MCPF.HIS",
+      "MCPF.Otros") coinciden con los ya vistos en Entidades_Mapeo del
+      ETL de Bypass -- misma lineage documental.
+      Esto no cierra el conflicto: puede leerse como "Entidades_Mapeo
+      seguía siendo la mejor fuente disponible cuando se construyó C003"
+      o como "quien construyó C003 desconocía el mecanismo más nuevo,
+      igual que el ETL ITP-genérico". Ver
+      docs/07-developer-guide/c003-knowledge-adoption.md § 4. Backlog
+      P1-01 sigue abierto, ahora con 3 fuentes independientes de
+      evidencia en la misma dirección.

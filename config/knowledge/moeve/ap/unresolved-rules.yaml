@@ -1,0 +1,65 @@
+# UNRESOLVED_RULE para el módulo ap -- reglas cuya existencia se
+# sospecha o cuyo mecanismo no se pudo confirmar por completo con la
+# inspección de hoja+cabecera+muestra de este sprint. No se inventa su
+# comportamiento.
+
+unresolved_rules:
+  - rule_id_candidate: ap.title_field_source_column
+    description: >
+      El mecanismo de transformación del campo de título (titlefix +
+      cloneorigin, ver mapping-set.yaml de simulacros/safety_meetings
+      para el patrón equivalente) no se confirmó dentro de las hojas de
+      ap inspeccionadas en este sprint -- Title_map existe en ambos ETL
+      de ap pero solo se muestreó su cabecera.
+    evidence_location: "etl:ap_gct_new_sitecan#Title_map, etl:ap_con_ajuste_entidad_new_sietcan#Title_map"
+    confidence: low
+    status: UNRESOLVED_RULE
+
+  - rule_id_candidate: ap.sources_mapping_v2
+    description: >
+      etl:ap_gct_new_sitecan tiene tanto "Mapeo_Sourcesd" como
+      "Mapeo_Sources_V2" -- el sufijo _V2 sugiere una revisión de la
+      misma regla (mapeo del campo Sources/origen del plan de acción),
+      pero no se comparó el contenido de ambas hojas en este sprint.
+    evidence_location: "etl:ap_gct_new_sitecan#Mapeo_Sourcesd, etl:ap_gct_new_sitecan#Mapeo_Sources_V2"
+    confidence: low
+    status: UNRESOLVED_RULE
+    note: >
+      Candidato a un segundo mapping_revision dentro de ap, distinto
+      del caso de eje (KC-AP-001) -- no se ha verificado si también es
+      "la última verificada" o si V2 es solo una copia de trabajo.
+
+  - rule_id_candidate: ap.replaceinreference_or_boolorigin
+    description: >
+      RESUELTO A NIVEL DE MOTOR en Sprint 8.8.1: replaceinreference y
+      boolorigin están implementados y documentados con código real en
+      Script ETL.txt (dentro de Mappings/OneDrive_2_12-8-2026.zip,
+      inspección autorizada) -- ver mapping-governance.md § 6 (tabla
+      de reglas actualizada). Sigue sin confirmarse su USO concreto
+      dentro de ap (ninguna hoja de ap inspeccionada en este sprint
+      tiene una fila con ReglaEspecial literalmente igual a esos
+      nombres) -- por eso permanece como candidato a nivel de módulo,
+      aunque el mecanismo genérico ya no es una incógnita.
+    evidence_location: "mapping:script_etl_office_script (motor); ninguna hoja de ap confirmada como consumidora"
+    confidence: medium
+    status: UNRESOLVED_RULE
+    note: "Downgrade de 'mecanismo desconocido' a 'mecanismo conocido, uso en ap sin confirmar' -- ver backlog P3-01 (actualizado)."
+
+  - rule_id_candidate: ap.sims_origin_12_link_mechanism
+    description: >
+      Sprint 8.9: el origen SIMS/12 ("Simulacros", automáticos/vía
+      flujo) tiene, en C003, Sources='\BC\Crisis\CrisisActionPlan' y
+      LinkTargetColumn=NULL -- es decir, NO enlaza vía ningún campo
+      directo del AP (ni CS_Drills). El origen SIMS/18
+      ("O-SIMULACROS-MANUALES") sí enlaza vía CS_Drills. Hipótesis: el
+      origen 12 se vincula al AP indirectamente a través del objeto
+      Crisis (BCM), no directamente con el registro de Simulacro. NO
+      verificado contra un CSV Operational real con filas de origen 12
+      (confirmaría BCCrisis poblado + CS_Drills vacío).
+    evidence_location: "c003_actionplans_tool#sql/30-generic-action-plans.sql L182"
+    confidence: medium
+    status: PARTIAL_MATCH
+    note: >
+      Antes: pregunta abierta sin pistas ("SIMS source/origin 12
+      pendiente"). Ahora: hipótesis concreta y verificable, no
+      cerrada. Ver action-plans-native-design.md § 5.

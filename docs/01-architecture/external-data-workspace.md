@@ -627,3 +627,16 @@ ahí, no se retira el YAML). Ver `docs/01-architecture/resource-resolver.md`
 transitivamente, a través de `ResourceResolver`, para comprobar existencia
 física opcional (`require_physical_files=True`) -- nunca crea directorios ni
 archivos, mismas garantías ya vigentes en este documento.
+
+## 25. Sprint 9.0 — primer workspace real activado (Moeve)
+
+`EMF_DATA_ROOT/projects/moeve/workspace.yaml` (fuera de Git) es el primer
+`WorkspaceManifest` real cargado contra el workspace físico verdadero, no
+un ejemplo versionable. Confirma en la práctica una limitación de
+configuración no documentada hasta ahora: los comandos `workspace
+validate/resolve/readiness` de la CLI **no** llaman a `load_dotenv()` (solo
+`src/db/connection.py` lo hace) -- `EMF_DATA_ROOT` debe estar exportado
+como variable de entorno real del shell, no basta con tenerlo en `.env`,
+para que estos comandos vean el workspace externo. Ver
+`docs/07-developer-guide/moeve-workspace-activation.md` § 7 para el
+detalle y la clasificación (`IMPROVEMENT`, no corregido en ese sprint).

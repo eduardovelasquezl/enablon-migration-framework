@@ -403,3 +403,25 @@ resultado tipados, reglas de estado (`missing`/`optional`/`deprecated`/
 `not_applicable`) y soporte de recursos generados — ver
 `docs/01-architecture/resource-resolver.md` para el diseño completo. Este
 documento no se duplica aquí.
+
+## 21. Sprint 9.0 — primer manifest real, y 3 límites de esquema confirmados
+
+El primer `workspace.yaml` real (Moeve, fuera de Git) validó sin
+violaciones al primer intento, pero expuso 3 situaciones que este esquema
+no modela limpiamente — ninguna es un defecto, son límites de un diseño
+pensado para un módulo de un solo origen (Drills):
+
+1. **Un solo artefacto por `kind` por `ModuleSpec`** — un módulo con más
+   de un objeto Enablon real (Safety Meetings, MOC, Events, Inspections)
+   no puede declarar más de un `template_csv`/`operational_csv` a la vez.
+2. **Sin concepto de artefacto transversal/a nivel de proyecto** —
+   recursos usados por varios módulos a la vez (el documento de
+   Attachments, el catálogo de Errores) no tienen dónde vivir sin
+   forzarlos bajo un único módulo.
+3. **`naming_convention` asume una convención `{module}.ext`** que
+   ningún archivo real de Moeve sigue — se resolvió fijando
+   `preserve_source_name` para todos los kinds, no ampliando el esquema.
+
+Ver `docs/07-developer-guide/moeve-workspace-activation.md` § 5 para el
+detalle completo y la decisión tomada en cada caso (backlog para una
+futura versión del esquema, no corregido en este sprint).

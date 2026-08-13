@@ -88,6 +88,15 @@ describe hacia dónde se evoluciona, no un punto de partida ya disponible.
    [`sprint-review-template.md`](../05-sprint-reviews/sprint-review-template.md)).
 5. No hacer commit sin aprobación explícita del resultado.
 
+## 5bis. Activar un workspace real de proyecto
+
+Si vas a trabajar contra un workspace externo real (no un ejemplo), ver
+[`moeve-workspace-activation.md`](moeve-workspace-activation.md) — cómo
+se crea, valida (`workspace validate`), resuelve (`workspace resolve`) y
+evalúa (`workspace readiness`) un `workspace.yaml` real, y qué hacer
+cuando el software (`ModuleRegistry`) todavía no sabe ejecutar un módulo
+que el proyecto ya declara.
+
 ## 6. Dudas de terminología
 
 Antes de nombrar algo nuevo, consulta la tabla de

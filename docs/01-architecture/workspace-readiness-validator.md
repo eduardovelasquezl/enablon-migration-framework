@@ -303,3 +303,17 @@ root, `src/bootstrap/module_registry.py`) y se declare en un
 Ver `reports/executions/2026-08-03/Informe-Workspace-Readiness-Validator-EMF.md`
 § 16 para el cotejo punto por punto contra los 20 criterios del encargo de
 este sprint.
+
+## 23. Sprint 9.0 — primera evaluación real (Moeve)
+
+Primera vez que `WorkspaceReadinessValidator` se ejecuta contra un
+workspace físico real, no un ejemplo. Confirma en la práctica el
+comportamiento diseñado: Drills (único módulo en `ModuleRegistry`)
+devuelve `ready_with_warnings` en `sample`/`comparison`/`full`, sin
+bloquear nunca por falta de `--allow-real-sql`; los 7 módulos restantes
+devuelven `blocked`/`MODULE_UNKNOWN` de forma limpia, sin ningún ruido de
+artefactos (el gate de implementación bloquea antes de evaluarlos) —
+exactamente la distinción "el software no lo sabe ejecutar" vs. "faltan
+datos" que motivó este validador. Ver
+`docs/07-developer-guide/moeve-workspace-activation.md` §§ 8-10 para la
+matriz completa.

@@ -1,0 +1,257 @@
+INFORME DE EJECUCION - SPRINT 9.0: MOEVE WORKSPACE ACTIVATION
+================================================================================
+
+Fecha: 2026-08-12
+Rama: feature/drills-filtered-exports
+Alcance: Activacion formal del workspace real de Moeve mediante la
+infraestructura ya implementada (DataWorkspace, WorkspaceManifest,
+ResourceResolver, ModuleRegistry, WorkspaceReadinessValidator, SQL
+Execution Guard). Ninguna migracion ejecutada, ningun SQL Server
+abierto, ningun sample/full real ejecutado. Sin commit.
+
+--------------------------------------------------------------------------------
+1. RESUMEN
+--------------------------------------------------------------------------------
+
+Se creo el primer workspace.yaml REAL de Moeve (fuera del repositorio,
+en %EMF_DATA_ROOT%/projects/moeve/), reconciliando el inventario fisico
+ya construido en Sprint 8.8/8.8.1/8.9 contra el esquema real de
+WorkspaceManifest. Valido sin violaciones a la primera ejecucion. Se
+ejecuto resolucion de recursos real contra el workspace externo y
+evaluacion de readiness real (no simulada) para los 8 modulos
+declarados. Resultado: PROJECT_WORKSPACE_ACTIVE_WITH_WARNINGS - el
+proyecto esta activo; Drills esta ready_with_warnings en las 3
+operaciones evaluadas; los 7 modulos restantes estan blocked por
+ausencia de software (MODULE_UNKNOWN), no por ausencia de datos.
+
+--------------------------------------------------------------------------------
+2. INVENTARIO
+--------------------------------------------------------------------------------
+
+Reutilizado de Sprint 8.8 (moeve-source-inventory.md), sin reabrir
+ningun archivo. 61 archivos ya inventariados; de ellos, 8 ETL + 4
+Template + 4 Operational con candidato unico resoluble en el manifest;
+el resto declarado status: missing con la ambiguedad documentada.
+
+--------------------------------------------------------------------------------
+3. MANIFEST
+--------------------------------------------------------------------------------
+
+Ruta: %EMF_DATA_ROOT%/projects/moeve/workspace.yaml (fuera de Git)
+SHA-256: b2e1f0a57f224e51672e31264455c3f3947060bb44782cd0db23c0ac0ef55bcb
+Tamano: 20864 bytes
+schema_version: 1.0 | project.version: 1.1
+8 modulos declarados, 0 inventados.
+
+--------------------------------------------------------------------------------
+4. MODULES
+--------------------------------------------------------------------------------
+
+module_id reutilizados sin invencion: drills (alias simulacros),
+safety_meetings, moc, bypass, events, ops, inspections,
+corrective_actions (Action Plans - no "ap"). Tabla completa en
+docs/07-developer-guide/moeve-workspace-activation.md seccion 2.
+
+--------------------------------------------------------------------------------
+5. TEMPLATES
+--------------------------------------------------------------------------------
+
+Candidato unico y resoluble solo para drills (Drills-34.csv,
+exists=True). Los otros 7 modulos tienen 0 (bypass, ops) o 2-6
+candidatos ambiguos (safety_meetings, moc, events, inspections).
+Ninguno se eligio por fecha de filesystem ni por conjetura.
+
+--------------------------------------------------------------------------------
+6. OPERATIONAL CSV
+--------------------------------------------------------------------------------
+
+Candidato unico y resoluble para drills, bypass, ops (exists=True los
+3). El resto ambiguo (2 a 12 candidatos). corrective_actions es el caso
+mas documentado (3 candidatos, 33/31/31 columnas, backlog P1-13).
+
+--------------------------------------------------------------------------------
+7. ETL
+--------------------------------------------------------------------------------
+
+8 de 11 ETL declarados (uno por modulo). 3 sin declarar por cubrir un
+ambito/version distinto, no un historico del mismo artefacto (moc,
+events, corrective_actions). Nunca required_for_sample/full salvo que
+el runtime lo consuma (ninguno lo hace hoy).
+
+--------------------------------------------------------------------------------
+8. MAPPINGS
+--------------------------------------------------------------------------------
+
+mapping declarado via source git-tracked para 7 de 8 modulos.
+corrective_actions.mapping queda status: missing deliberadamente -
+KC-AP-001 sigue abierto. AttachmentsLast.csv (externo, transversal) no
+se declaro como artefacto.
+
+--------------------------------------------------------------------------------
+9. SQL
+--------------------------------------------------------------------------------
+
+48 queries ya versionadas en sql/source_queries/, cada modulo
+referencia su carpeta via source git. El .zip externo no se declara -
+ya reconciliado 100% duplicado en Sprint 8.8.1.
+
+--------------------------------------------------------------------------------
+10. ERRORS
+--------------------------------------------------------------------------------
+
+Errors/Requests-12082026-28.csv declarado solo bajo drills, con nota
+explicita de que es transversal - el esquema no admite un artefacto a
+nivel de proyecto.
+
+--------------------------------------------------------------------------------
+11. VALIDATION
+--------------------------------------------------------------------------------
+
+python main.py workspace validate --manifest "%EMF_DATA_ROOT%/projects/moeve/workspace.yaml"
+
+Resultado: OK -- sin violaciones. Exit code 0, a la primera ejecucion.
+
+--------------------------------------------------------------------------------
+12. RESOLUTION
+--------------------------------------------------------------------------------
+
+Ejecutado contra el workspace externo real. template_csv,
+operational_csv, etl, errors de drills resolvieron con exists=True.
+sql/mapping (git-sourced) resuelven status=present sin comprobacion
+fisica (por diseno). catalogs resolvio correctamente como
+not_applicable. Smoke-resolution de los 7 modulos restantes confirmo el
+mismo patron sin excepciones no controladas.
+
+--------------------------------------------------------------------------------
+13. READINESS
+--------------------------------------------------------------------------------
+
+Ejecutado real para los 8 modulos x operacion relevante.
+
+--------------------------------------------------------------------------------
+14. DRILLS
+--------------------------------------------------------------------------------
+
+sample      | ready_with_warnings | 0 blockers | requiere: mapping, sql
+comparison  | ready_with_warnings | 0 blockers | requiere: operational_csv
+full        | ready_with_warnings | 0 blockers | requiere: mapping, sql
+
+0 blockers en los 3 casos. Warnings: evidence/outputs ausentes (no
+obligatorios). Falta de --allow-real-sql aparece solo como next action.
+
+--------------------------------------------------------------------------------
+15. AP (corrective_actions)
+--------------------------------------------------------------------------------
+
+blocked en las 3 operaciones, un unico blocker: MODULE_UNKNOWN
+(ModuleRegistry no conoce el modulo). Distincion correcta entre "falta
+software" y "faltan datos". P1 conocidos (KC-AP-001, identidad, parent
+resolution, Project Contract, SIMS, attachments) registrados, ninguno
+resuelto ni bloqueando el workspace.
+
+--------------------------------------------------------------------------------
+16. OTROS MODULOS
+--------------------------------------------------------------------------------
+
+safety_meetings, moc, bypass, events, ops, inspections: mismo patron -
+blocked/MODULE_UNKNOWN, limpio, sin ruido de artefactos.
+
+Tipo de gap                              | Modulos
+Workspace artifact gap (ambiguos)        | safety_meetings, moc, events, inspections
+Workspace ready, solo falta software     | bypass, ops
+Software implementation gap (los 7)      | todos excepto drills
+Knowledge gap adicional                  | corrective_actions (KC-AP-001)
+
+--------------------------------------------------------------------------------
+17. PROJECT ACTIVATION
+--------------------------------------------------------------------------------
+
+PROJECT_WORKSPACE_ACTIVE_WITH_WARNINGS. Sin bloqueo estructural.
+_WITH_WARNINGS por: candidatos ambiguos en 6/8 modulos, KC-AP-001
+abierto, 3 limites de esquema documentados, hallazgo de configuracion
+.env.
+
+--------------------------------------------------------------------------------
+18. WARNINGS
+--------------------------------------------------------------------------------
+
+- 6 de 8 modulos con template_csv/operational_csv ambiguos.
+- Drills: evidence/outputs sin archivar (esperado).
+- 3 limites de esquema (artefacto unico por kind, sin scope
+  transversal, naming {module}.ext no representativo).
+
+--------------------------------------------------------------------------------
+19. BLOCKERS
+--------------------------------------------------------------------------------
+
+Ninguno a nivel de proyecto. A nivel de modulo: los 7 no-drills estan
+blocked por MODULE_UNKNOWN en toda operacion.
+
+--------------------------------------------------------------------------------
+20. NEXT ACTIONS
+--------------------------------------------------------------------------------
+
+1. Sesiones dedicadas de reconciliacion columna-a-columna (P1-05 a
+   P1-08, Sprint 8.8).
+2. Confirmar con el cliente KC-AP-001 antes de declarar un mapping para
+   corrective_actions.
+3. Ninguna accion de software en este sprint (prohibido crear adapters).
+4. Exportar EMF_DATA_ROOT como variable de entorno real al operar
+   workspace * desde una shell nueva.
+
+--------------------------------------------------------------------------------
+21. TESTS
+--------------------------------------------------------------------------------
+
+pytest tests/ -v -> 714 passed, 7 skipped (identico antes y despues). No
+se modifico codigo funcional.
+
+--------------------------------------------------------------------------------
+22. ARCHIVOS CREADOS/MODIFICADOS
+--------------------------------------------------------------------------------
+
+Fuera de Git (no versionable, por diseno):
+  %EMF_DATA_ROOT%/projects/moeve/workspace.yaml
+
+Dentro del repositorio (versionables):
+  docs/07-developer-guide/moeve-workspace-activation.md   (nuevo)
+  docs/07-developer-guide/getting-started.md              (seccion anadida)
+  docs/01-architecture/external-data-workspace.md         (seccion anadida)
+  docs/01-architecture/workspace-manifest.md              (seccion anadida)
+  docs/01-architecture/workspace-readiness-validator.md   (seccion anadida)
+  reports/executions/2026-08-12/Informe-Moeve-Workspace-Activation-EMF.md
+  reports/executions/2026-08-12/Informe-Moeve-Workspace-Activation-EMF.txt
+
+--------------------------------------------------------------------------------
+23. GIT STATUS / GIT DIFF
+--------------------------------------------------------------------------------
+
+Ver seccion 24 - capturados tras la generacion de informes, antes de
+cualquier commit.
+
+--------------------------------------------------------------------------------
+24. RECOMENDACION
+--------------------------------------------------------------------------------
+
+Aprobar la propuesta de commit de documentacion (seccion 25) -
+workspace.yaml real permanece fuera de Git. No crear ningun adapter
+todavia; los siguientes pasos productivos son de reconciliacion de
+conocimiento y de confirmacion con cliente (KC-AP-001), no de codigo.
+
+--------------------------------------------------------------------------------
+25. PROPUESTA DE COMMIT (DOCUMENTACION, NO EJECUTADO)
+--------------------------------------------------------------------------------
+
+docs(moeve): activate real workspace manifest and document activation
+
+  docs/07-developer-guide/moeve-workspace-activation.md
+  docs/07-developer-guide/getting-started.md
+  docs/01-architecture/external-data-workspace.md
+  docs/01-architecture/workspace-manifest.md
+  docs/01-architecture/workspace-readiness-validator.md
+  reports/executions/2026-08-12/Informe-Moeve-Workspace-Activation-EMF.md
+  reports/executions/2026-08-12/Informe-Moeve-Workspace-Activation-EMF.txt
+
+workspace.yaml real NO se incluye - vive fuera de Git por diseno. Este
+commit se suma a la propuesta ya pendiente de Sprint 8.8/8.8.1/8.9
+(todavia sin aprobar).

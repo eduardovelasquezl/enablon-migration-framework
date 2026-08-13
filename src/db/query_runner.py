@@ -281,6 +281,30 @@ def _query_hash(sql: str) -> str:
     return hashlib.sha256(sql.encode("utf-8")).hexdigest()[:12]
 
 
+# Sprint 9.1 (diagnóstico del primer fallo real de Drills, execution_id
+# 458dfb9f27f3): defensa en profundidad adicional a `hide_parameters=True`
+# (src/db/connection.py) -- por si un driver/mensaje de error incrusta un
+# fragmento con pinta de credencial que `hide_parameters` no cubre (que solo
+# oculta SQL/params de SQLAlchemy, no el texto libre de un DBAPIError.orig).
+_SECRET_LIKE_PATTERN = re.compile(
+    r"(?i)\b(pwd|password|pass|token|secret|apikey|api_key)\s*=\s*[^;,\s]+"
+)
+_MAX_ERROR_DETAIL_LENGTH = 500
+
+
+def _sanitize_error_detail(detail: str) -> str:
+    """Redacta fragmentos tipo `password=...`/`pwd=...`/`token=...` de un
+    texto de error técnico y lo trunca.
+
+    Nunca decide si el texto resultante es apto para el modo CLI por
+    defecto -- sigue reservado a `--verbose` (ver el `logger.debug` en
+    `run_query`), esto es solo saneamiento adicional de lo que se registra."""
+    redacted = _SECRET_LIKE_PATTERN.sub(r"\1=***REDACTED***", detail)
+    if len(redacted) > _MAX_ERROR_DETAIL_LENGTH:
+        redacted = redacted[:_MAX_ERROR_DETAIL_LENGTH] + "... (truncado)"
+    return redacted
+
+
 def run_query(
     sql: str,
     connection: str | None = None,
@@ -336,6 +360,26 @@ def run_query(
     except QueryRowLimitExceededError:
         raise
     except SQLAlchemyError as exc:
+        # Sprint 9.1: la causa técnica original (tipo de excepción + mensaje
+        # del driver, saneado) se registra a nivel DEBUG -- invisible en modo
+        # CLI por defecto, visible con `--verbose` (reutiliza el nivel de
+        # logging que ya configura `_configure_logging` en src/cli.py, sin
+        # flag nuevo). El mensaje amigable de QueryExecutionError no cambia;
+        # `from exc` ya conservaba `__cause__` desde antes de este cambio --
+        # lo nuevo es que ahora también queda REGISTRADO, no solo retenido en
+        # el objeto excepción hasta que el proceso termina.
+        #
+        # Deliberadamente SIN `exc_info=True`: el formateador de logging
+        # renderiza el traceback llamando a `str()` sobre la excepción REAL,
+        # no sobre nuestro texto ya saneado -- adjuntarlo reintroduciría
+        # exactamente el fragmento sin sanear que `_sanitize_error_detail`
+        # acaba de quitar (confirmado con un test que lo reproduce). Se
+        # registra tipo + mensaje saneado; se renuncia al traceback completo
+        # a cambio de la garantía de no fuga.
+        logger.debug(
+            "Causa técnica original (query_hash=%s, conexión=%s): %s: %s",
+            query_hash, connection, type(exc).__name__, _sanitize_error_detail(str(exc)),
+        )
         raise QueryExecutionError(
             f"Fallo al ejecutar la consulta (conexión='{connection}', "
             f"archivo={source_file or '-'}, hash={query_hash})."

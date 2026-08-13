@@ -166,11 +166,19 @@ def get_engine(name: str | None = None) -> Engine:
     que basta gatear aquí para cubrir cualquier camino presente o futuro.
     Una excepción no se cachea (`lru_cache` no memoriza excepciones) -- un
     segundo intento, ya autorizado, vuelve a evaluarse desde cero.
+
+    Sprint 9.1 (diagnóstico del primer fallo real de Drills): `hide_parameters=True`
+    -- sin esto, el `str()` por defecto de un `SQLAlchemyError` real (p. ej.
+    `OperationalError`) incluye el texto íntegro de la SQL ejecutada y los
+    valores de sus parámetros (`[SQL: ...] [parameters: ...]`), lo que viola
+    la regla de `src/db/exceptions.py` de no exponer nunca el texto de la
+    consulta en un mensaje de excepción. No afecta a la ejecución -- solo a
+    cómo SQLAlchemy formatea sus propios mensajes de error.
     """
     spec = get_connection_spec(name)
     require_real_sql_authorization(spec.name)
     try:
-        return create_engine(spec.to_sqlalchemy_url(), pool_pre_ping=True)
+        return create_engine(spec.to_sqlalchemy_url(), pool_pre_ping=True, hide_parameters=True)
     except SQLAlchemyError as exc:
         raise DatabaseConfigurationError(
             f"No se pudo construir el motor de conexión para '{spec.name}'."

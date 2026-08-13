@@ -28,7 +28,7 @@ def _run(*args):
 
 def _fake_dataframe() -> pd.DataFrame:
     return pd.DataFrame({
-        "IDSimulacro": [440], "IDTipo": [365], "Fecha": ["08/03/2010"],
+        "IDSimulacro": [440], "IDTipo": [365], "Fecha": ["08/03/2010"], "Hora": ["12:30"],
         "IDLetra": [258], "IDUnidadOrg": [278], "Estado": ["Terminado"],
     })
 

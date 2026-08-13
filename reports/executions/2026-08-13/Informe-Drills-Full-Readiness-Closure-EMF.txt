@@ -1,0 +1,400 @@
+INFORME DE EJECUCION - SPRINT 9.3: DRILLS FULL READINESS CLOSURE
+================================================================================
+
+Fecha: 2026-08-13
+Rama: feature/drills-filtered-exports
+Ejecuciones SQL reales en este sprint: 0 (todo offline, solo lectura de
+ficheros locales ya presentes en el repositorio/workspace: ETL, Operational,
+Template, catalogos).
+
+--------------------------------------------------------------------------------
+1. RESUMEN EJECUTIVO
+--------------------------------------------------------------------------------
+
+Sprint 9.2 cerro con DRILLS_FUNCTIONALLY_VALIDATED (execution_id
+8ba7eba9f65c, 15/15 solapamiento real, 7/8 campos al 100% de coincidencia,
+StartingDate con diferencia sistematica ya identificada: hora truncada).
+
+Este sprint:
+1. Reconstruyo y verifico empiricamente (12091 filas reales del ETL, sin
+   SQL) la regla exacta de StartingDate, y la implemento.
+2. Clasifico individualmente las 10 columnas del Project Contract todavia
+   no generadas por EMF.
+3. Construyo el contrato definitivo de las 18 columnas reales de Drills.
+4. Evaluo la deuda de soporte XLSX del comparador automatico.
+5. Confirmo readiness offline: 0 blockers estructurales.
+6. Determino que todavia NO procede declarar
+   DRILLS_ACCEPTED_FOR_FULL_READINESS - dos motivos concretos (ver 9).
+
+ESTADO FINAL DE ESTE SPRINT: DRILLS_FUNCTIONALLY_VALIDATED
+(sin cambio de nivel respecto a Sprint 9.2 - reforzado, no degradado).
+
+--------------------------------------------------------------------------------
+2. FASE 0 - PREFLIGHT Y COMMITS
+--------------------------------------------------------------------------------
+
+Rama feature/drills-filtered-exports, remote origin sin cambios.
+Suite completa antes de empezar: 739 passed, 7 skipped (coincide con la
+referencia).
+
+Cambios de Sprint 9.1/9.2 separados, revisados campo a campo (confirmado
+sin .claude/settings.local.json, sin workspace.yaml real, sin outputs ni
+evidence reales, sin datos de cliente) y comiteados de forma
+independiente:
+
+  COMMIT A (90d7c89) - fix(db): add safe SQL failure diagnostics
+    src/db/connection.py, src/db/query_runner.py,
+    tests/test_db_query_runner.py, tests/test_cli_verbose_diagnostics.py
+
+  COMMIT B (f240a7e) - feat(drills): resolve comparison Project Contract
+  from real workspace manifest
+    src/cli.py, src/core/contracts.py,
+    src/export/prototype/drills/comparison.py,
+    src/export/prototype/drills/core_adapters.py,
+    src/export/prototype/drills/pipeline.py,
+    tests/test_drills_comparison_real_manifest.py
+
+Sin push. Sin cambio de rama.
+
+--------------------------------------------------------------------------------
+3. FASE 1 - EVIDENCIA DE STARTINGDATE
+--------------------------------------------------------------------------------
+
+Orden de autoridad: ETL real -> mapping gobernado -> Operational real ->
+Template -> ejecucion 8ba7eba9f65c -> codigo EMF actual.
+
+1. ETL real (ETL_BCM_Simulacros_UpdateEje_SITECAN.xlsx, hoja MapeoSims,
+   fila 11): el origen declarado del campo destino "Start Date" es
+   FechaHoraCombinado, NO Fecha sola (fila 9, sin transformacion
+   asociada). FechaHoraCombinado llega siempre vacia desde SQL
+   ('' as FechaHoraCombinado) - la combinacion nunca se materializo en
+   la consulta.
+
+2. Verificacion empirica cruzada, dentro del mismo workbook, sin SQL:
+   hoja DB_OrigenSim (origen crudo) vs. hoja CSV_SIM (destino ya
+   generado, valores materializados, no formulas).
+   12091 filas comparadas - 12087 coinciden exactamente (99.97%) con la
+   regla: StartingDate = fecha(Fecha) + hora:minuto(Hora), Hora como
+   texto H:MM/HH:MM, 24h, sin segundos (consistente con varchar(5)).
+
+3. Las 4 filas discordantes: Hora corrupta en origen ('11:', '1:',
+   '2:.30') o un caso sin explicacion mecanica simple ('9:50' ->
+   destino '18:50') - 0.033% del total, sin patron alternativo
+   consistente.
+
+4. No existe ninguna formula Excel/VBA visible que compute la
+   combinacion (mismo patron ya documentado para titlefix en
+   CLAUDE.md) - la regla se reconstruyo por evidencia cruzada de
+   datos, no por lectura de formula.
+
+CLASIFICACION DE LA EVIDENCIA:
+  - Regla central (Fecha+Hora -> StartingDate): VERIFIED
+  - Comportamiento con Hora NULL/vacia: UNRESOLVED (0 casos observados
+    en las 12091 filas disponibles)
+  - Timezone: sin evidencia de transformacion (valores "naive")
+  - Segundos: siempre :00
+
+Documentado en docs/07-developer-guide/drills-startingdate-rule.md
+
+--------------------------------------------------------------------------------
+4. FASE 2-3 - IMPLEMENTACION Y TESTS DE STARTINGDATE
+--------------------------------------------------------------------------------
+
+Cambio minimo, sin tocar SQL ni otros mappings:
+  - transformations.py::parse_starting_date(value, hora=None) - nuevo
+    parametro opcional; hora=None/vacia/no interpretable reproduce el
+    comportamiento EXACTO de antes (retrocompatible). Nueva funcion
+    parse_hora().
+  - pipeline.py: pasa row.get("Hora"); nueva categoria de incidencia no
+    bloqueante HORA_MISSING_OR_INVALID (issues.jsonl, nunca excluye la
+    fila).
+  - manifest.py: nuevo contador dates_hora_missing_or_invalid en
+    RunStats y en validation_report.yaml.
+  - config/exports/drills.yaml: source de StartingDate pasa de "Fecha"
+    a ["Fecha", "Hora"].
+
+Tests nuevos (datos 100% sinteticos, ningun dato real): 15 en
+tests/test_drills_export_prototype.py + 1 de integracion en
+tests/test_drills_data_workspace_integration.py.
+
+Efecto colateral controlado: 6 archivos de test con dataframes
+sinteticos no incluian Hora - el validador de columnas fuente lo
+detecto correctamente. Corregido anadiendo Hora a cada fixture, sin
+tocar ninguna asercion.
+
+SUITE COMPLETA: 755 passed, 7 skipped (739 + 16 nuevos, sin
+regresiones).
+
+--------------------------------------------------------------------------------
+5. FASE 4-5 - LAS 10 COLUMNAS DIFERIDAS, CLASIFICADAS INDIVIDUALMENTE
+--------------------------------------------------------------------------------
+
+NameEN
+  Importable=Si | Template=Si | Operational=Si(0% nulo) | Fuente=sin
+  confirmar (Mapeo_Titulo sin motor visible) | Poblado=100% |
+  Datos personales=No | Clasificacion: UNRESOLVED_BLOCKING
+
+CS_Duration
+  Importable=Si | Template=Si | Operational=Si(0% nulo) |
+  Fuente=Duracion via CalculoHorasDiasMinutos (regla ya conocida, no
+  reabierta) | Poblado=100% | Datos personales=No |
+  Clasificacion: FUTURE_INCREMENT
+
+CS_EnvConsequences
+  Importable=Si | Template=Si | Operational=Si(78% nulo) | Fuente=sin
+  columna SQL identificada | Poblado=22% | Datos personales=No |
+  Clasificacion: UNRESOLVED_NON_BLOCKING
+
+CS_ObservationsCommunication
+  Importable=Si | Template=Si | Operational=Si(26% nulo) | Fuente=sin
+  columna SQL identificada | Poblado=74% | Datos personales=No |
+  Clasificacion: UNRESOLVED_NON_BLOCKING
+
+CS_HistoricalRecord
+  Importable=Si | Template=Si | Operational=Si(0% nulo) |
+  Fuente=constante "Yes" en 340/340 filas reales (Sprint 9.3) |
+  Poblado=100% | Datos personales=No |
+  Clasificacion: FUTURE_INCREMENT (bajo riesgo)
+
+CS_HistoricalUserId
+  Importable=Si | Template=Si | Operational=Si(0% nulo) |
+  Fuente=usuario via multifielduser (mecanismo confirmado) |
+  Poblado=100% | Datos personales=SI |
+  Clasificacion: OUT_OF_SCOPE_CONFIRMED
+
+CS_HistoricalUserName
+  Importable=Si | Template=Si | Operational=Si(0% nulo) |
+  Fuente=ITP_USUARIOS (join, mecanismo confirmado) | Poblado=100% |
+  Datos personales=SI (nombre) | Clasificacion: OUT_OF_SCOPE_CONFIRMED
+
+CS_HistoricalDrillResponsibleName
+  Importable=Si | Template=Si | Operational=Si(0% nulo) |
+  Fuente=ITP_USUARIOS (join, mecanismo confirmado) | Poblado=100% |
+  Datos personales=SI (nombre) | Clasificacion: OUT_OF_SCOPE_CONFIRMED
+
+CS_HistoricalDrillAttendees
+  Importable=Si | Template=Si | Operational=Si(59% nulo) |
+  Fuente=ITP_ASIST_SIMS(+EXT) via Asis_concat (regla ya conocida, no
+  reabierta) | Poblado=41% | Datos personales=SI (nombres,
+  confirmado en Operational real: "Veras Gonzalez, Jose") |
+  Fase transversal futura=Parcial | Clasificacion: FUTURE_INCREMENT
+
+CS_HistoricalAttachedFiles
+  Importable=Si | Template=Si | Operational=Si(52% nulo) | Fuente=
+  tablas de adjuntos (TablaAdjuntos*, requieren SQL adicional) |
+  Poblado=48% | Fase transversal futura=SI |
+  Clasificacion: FUTURE_INCREMENT
+
+NOTA (Fase 5, sin reabrir conocimiento previo): conocer la regla
+(CS_Duration, CS_HistoricalDrillAttendees) no implica que pertenezca al
+primer full - ambas requieren ademas cambios de alcance (SQL adicional
+para Attendees; unidades/semantica sin confirmar para Duration) no
+necesarios para demostrar la fidelidad de las 8 columnas ya
+implementadas. Se clasifican FUTURE_INCREMENT, no REQUIRED_BEFORE_FULL.
+
+UNICO CAMPO CON CLASIFICACION BLOQUEANTE: NameEN. Es el unico de los 10
+que es (a) 100% poblado historicamente, (b) altamente visible/critico
+funcionalmente (titulo con el que un usuario identifica el registro en
+Enablon), y (c) sin ningun mecanismo de origen confirmado ni siquiera
+parcialmente - no hay decision de negocio registrada que acepte cargar
+registros sin titulo.
+
+--------------------------------------------------------------------------------
+6. FASE 6 - CONTRATO DEFINITIVO DE DRILLS (18 COLUMNAS)
+--------------------------------------------------------------------------------
+
+GENERADAS HOY (8, todas IN_SCOPE, sin full blocker):
+  CS_Typology, Reference, StartingDate, CS_HistoricalOriginID,
+  CS_Letter, CS_ImpactedEntities, CS_WorkflowStatus,
+  CS_HistoricalDataOrigin
+  -> todas RESOLVED, con evidencia trazable (ver seccion 3 para
+     StartingDate; el resto ya validado en Sprint 9.1/9.2).
+
+DIFERIDAS (10, ver seccion 5 para detalle y clasificacion):
+  NameEN (UNRESOLVED_BLOCKING - unico full blocker real),
+  CS_Duration, CS_HistoricalRecord, CS_HistoricalDrillAttendees
+    (FUTURE_INCREMENT, regla conocida),
+  CS_EnvConsequences, CS_ObservationsCommunication,
+  CS_HistoricalAttachedFiles (UNRESOLVED_NON_BLOCKING/FUTURE_INCREMENT,
+    sin origen confirmado),
+  CS_HistoricalUserId, CS_HistoricalUserName,
+  CS_HistoricalDrillResponsibleName (OUT_OF_SCOPE_CONFIRMED, datos
+    personales).
+
+DISTINCION EXPLICITA: Project Contract (18, arriba) DISTINTO DE todas
+las columnas observadas en cualquier export (36 en Template, incluye Id
+- system, asignado por Enablon tras la carga, nunca generable por este
+prototipo) DISTINTO DE columnas que EMF debe generar en esta version
+(8, ya validadas).
+
+--------------------------------------------------------------------------------
+7. FASE 7 - DEUDA DEL COMPARADOR XLSX
+--------------------------------------------------------------------------------
+
+CLASIFICACION: B) blocker solo de automatizacion de validation - NO de
+full. La comparacion fila a fila SI es posible (se hizo manualmente en
+Sprint 9.2, con exito, 15/15) - falta automatizarla.
+
+PROPUESTA DE DISENO (pequena, generica, NO implementada en este
+sprint):
+  - Extraer read_historical_table(path) -> HistoricalTableInfo que
+    despache por extension: .csv reutiliza detect_historical_csv/
+    _read_all_rows (sin cambios); .xlsx usa pandas.read_excel +
+    normalizacion a texto (mismo tratamiento que csv.DictReader: todo
+    string, NaN -> "").
+  - build_comparison_report deja de leer bytes directamente - recibe
+    la tabla ya normalizada, sea cual sea el origen.
+  - Ningun codigo especifico de "Simulacros CCE.xlsx" en absoluto.
+
+No implementado en este sprint (fuera del cambio minimo de
+StartingDate). Backlog P2.
+
+--------------------------------------------------------------------------------
+8. FASE 8 - READINESS OFFLINE (SIN SQL)
+--------------------------------------------------------------------------------
+
+workspace validate --manifest <real>                        -> OK, sin violaciones
+workspace readiness drills/full                              -> ready_with_warnings, 0 blockers
+workspace readiness drills/comparison                        -> ready_with_warnings, 0 blockers
+
+Warnings en ambos: evidence/outputs ausentes (esperado, ninguna
+ejecucion real archivada en el workspace externo todavia). Ningun
+blocker de manifest, modulo, contrato ni knowledge. La autorizacion SQL
+no aparece como blocker de readiness - correcto, es autorizacion de
+ejecucion, no requisito estructural.
+
+--------------------------------------------------------------------------------
+9. FASE 9 - MATRIZ DE DECISION
+--------------------------------------------------------------------------------
+
+A. Pipeline real            PASS                   Ejecutado con exito (9.1, 9.2)
+B. Query/filter             PASS                   WHERE parametrizado verificado
+C. Mapping                  PASS                   7/8=100% (9.2); StartingDate corregido (9.3)
+D. Entity resolution        PASS                   15/15 resuelto (9.2); No migra=EXPECTED (9.1)
+E. Project Contract         PASS                   Resuelto desde workspace.yaml real (9.2)
+F. StartingDate             PASS_WITH_ACCEPTED_RISK  VERIFIED (99.97%) pero no reconfirmado con SQL real
+G. Excluded fields          PASS_WITH_ACCEPTED_RISK  9/10 con decision trazable; NameEN = BLOCKED individual
+H. Comparison automation    PASS_WITH_ACCEPTED_RISK  Resuelve contrato bien; no procesa .xlsx todavia
+I. Evidence                 PASS                   Generada correctamente (9.1, 9.2)
+J. Workspace                PASS                   0 blockers (seccion 8)
+K. SQL safety                PASS                   Guard+sanitizacion+readonly verificado (9.1)
+L. Full-volume risk          PASS_WITH_ACCEPTED_RISK  Nunca ejecutado a volumen completo
+
+DECISION: existe un BLOCKED a nivel de campo individual (NameEN, dentro
+de G) y un riesgo pendiente de reconfirmacion (F). Ninguno de los dos
+representa una regresion de lo ya validado en Sprint 9.2.
+
+NO se declara DRILLS_ACCEPTED_FOR_FULL_READINESS (dos motivos
+concretos: NameEN sin decision de negocio; StartingDate sin
+reconfirmacion real).
+NO se declara DRILLS_BLOCKED_<reason>: nada de lo ya validado en
+Sprint 9.2 se ha invalidado - pipeline, filtro, 7/8 de mapping,
+resolucion de entidad, Project Contract y SQL safety siguen en PASS.
+
+ESTADO FINAL: DRILLS_FUNCTIONALLY_VALIDATED
+(sin cambio de nivel respecto a Sprint 9.2, reforzado con evidencia
+adicional).
+
+--------------------------------------------------------------------------------
+10. FASE 10 - PUERTA DE SEGURIDAD CONDICIONAL (STARTINGDATE SI FUE MODIFICADO)
+--------------------------------------------------------------------------------
+
+StartingDate fue corregido con evidencia suficiente (VERIFIED). Puerta
+preparada para repetir el sample comparable - SIN ejecutar SQL todavia.
+
+COMANDO PROPUESTO (identico al de Sprint 9.2, sin cambios de
+filtro/limite):
+
+python main.py --verbose run --project moeve --object drills --mode sample --limit 15 --filter origin_org_unit_id:eq:147 --generate-evidence --audience both --allow-real-sql --manifest "<EMF_DATA_ROOT>/projects/moeve/workspace.yaml"
+
+RESULTADO ESPERADO si no hay ninguna otra diferencia: 15/15
+solapamiento, 120/120 comparaciones exactas (7 campos x 15 filas +
+CS_HistoricalOriginID como clave = 120; a diferencia de Sprint 9.2,
+StartingDate deberia pasar de 0/15 a 15/15 exactos, hipotesis a
+confirmar, no verificada todavia).
+
+NO SE HA EJECUTADO. Esperando autorizacion explicita.
+
+--------------------------------------------------------------------------------
+11. FASE 11 - ROADMAP POST-DRILLS
+--------------------------------------------------------------------------------
+
+Reutilizables tal cual: WorkspaceManifest, ResourceResolver,
+ModuleRegistry, ReadinessValidator, SQL Execution Guard, Evidence,
+mapping governance (metodologia), Project Contract (concepto),
+execution lifecycle (contratos genericos).
+
+Necesitan adapter/interfaz antes de acelerar otros modulos:
+  - Query Engine: el patron es reutilizable, pero cada modulo necesita
+    su propio ObjectFilterCatalog.
+  - Comparison: conectado a manifest real, pero solo procesa CSV -
+    necesita soporte XLSX generico (seccion 7).
+  - pipeline.run() de Drills: monolitico (mapeo+validacion+export+
+    comparison en una funcion) - el "adaptador temporal" de Framework
+    Core v1 sigue pendiente de separarse en stages propios (deuda ya
+    documentada).
+  - "Contrato definitivo" de columnas (seccion 6): tabla manual hoy, no
+    derivada automaticamente de Template+Operational+config.
+
+--------------------------------------------------------------------------------
+12. RIESGOS ACEPTADOS
+--------------------------------------------------------------------------------
+
+1. StartingDate verificado offline (99.97%, 12091 filas), pendiente de
+   reconfirmacion con SQL real.
+2. Comparacion automatica no soporta .xlsx - comparacion manual sigue
+   siendo necesaria (backlog P2).
+3. Volumen completo (~12501 filas) nunca ejecutado - sin evidencia de
+   problema, no probado.
+4. 9 de 10 columnas diferidas con decision trazable pero no
+   implementadas - riesgo bajo, documentado, no bloqueante.
+
+--------------------------------------------------------------------------------
+13. BLOCKERS REALES
+--------------------------------------------------------------------------------
+
+1. NameEN - sin origen SQL/ETL confirmado, 100% poblado
+   historicamente, sin decision de negocio registrada que acepte
+   omitirlo. Bloquea DRILLS_ACCEPTED_FOR_FULL_READINESS, NO bloquea
+   DRILLS_FUNCTIONALLY_VALIDATED.
+
+--------------------------------------------------------------------------------
+14. PROPUESTA DE SIGUIENTE ACCION
+--------------------------------------------------------------------------------
+
+1. Decision de negocio sobre NameEN (aceptar un primer full sin
+   titulo, o investigar su origen real primero).
+2. Autorizacion para repetir el sample comparable (seccion 10) y
+   confirmar StartingDate con SQL real.
+3. Si ambos se resuelven favorablemente: nueva evaluacion de Fase 9 con
+   posibilidad real de DRILLS_ACCEPTED_FOR_FULL_READINESS.
+4. Backlog no bloqueante: soporte XLSX en el comparador (P2); columnas
+   FUTURE_INCREMENT (P3).
+
+--------------------------------------------------------------------------------
+15. COMMITS
+--------------------------------------------------------------------------------
+
+Realizados en este sprint: A (90d7c89) y B (f240a7e) - ver seccion 2.
+
+PENDIENTE DE AUTORIZACION (no comiteado todavia): cambio de
+StartingDate (secciones 3-4) + este informe.
+
+--------------------------------------------------------------------------------
+16. ARCHIVOS MODIFICADOS (NO COMITEADOS)
+--------------------------------------------------------------------------------
+
+config/exports/drills.yaml
+docs/07-developer-guide/drills-startingdate-rule.md (nuevo)
+src/export/prototype/drills/transformations.py
+src/export/prototype/drills/pipeline.py
+src/export/prototype/drills/manifest.py
+tests/test_drills_export_prototype.py
+tests/test_drills_data_workspace_integration.py
+tests/test_bootstrap_module_registry.py
+tests/test_cli_sql_execution_guard.py
+tests/test_drills_comparison_real_manifest.py
+tests/test_drills_core_pipeline.py
+tests/test_drills_export_query_engine.py
+reports/executions/2026-08-13/Informe-Drills-Full-Readiness-Closure-EMF.md (nuevo)
+reports/executions/2026-08-13/Informe-Drills-Full-Readiness-Closure-EMF.txt (nuevo)

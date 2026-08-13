@@ -53,6 +53,76 @@ def test_starting_date_como_datetime_ya_materializado():
 
 
 # --------------------------------------------------------------------------
+# 2b. StartingDate = Fecha + Hora (Sprint 9.3 -- regla reconstruida, ver
+# docs/07-developer-guide/drills-startingdate-rule.md). Datos sintéticos,
+# ninguno real.
+# --------------------------------------------------------------------------
+
+def test_fecha_mas_hora_normal():
+    """1. Fecha + Hora normal -- caso central de la regla verificada."""
+    parsed = tr.parse_starting_date("08/03/2010", "16:10")
+    assert parsed == datetime(2010, 3, 8, 16, 10)
+
+
+def test_fecha_mas_hora_00_00():
+    """2. Hora '00:00' explícita -- se aplica igual que cualquier otra
+    hora válida (no es un caso especial de 'vacío')."""
+    parsed = tr.parse_starting_date("08/03/2010", "00:00")
+    assert parsed == datetime(2010, 3, 8, 0, 0)
+
+
+@pytest.mark.parametrize("hora_nula", [None, "", "   "])
+def test_hora_null_o_vacia_degrada_a_solo_fecha(hora_nula):
+    """3. Hora NULL/vacía -- StartingDate usa solo la fecha, comportamiento
+    IDÉNTICO al de antes de este incremento. Nunca inventa una hora."""
+    parsed = tr.parse_starting_date("08/03/2010", hora_nula)
+    assert parsed == datetime(2010, 3, 8)
+
+
+def test_fecha_null_devuelve_none_independientemente_de_hora():
+    """4. Fecha NULL -- sigue devolviendo None aunque Hora sea válida (Hora
+    nunca sustituye a una Fecha ausente)."""
+    assert tr.parse_starting_date(None, "16:10") is None
+    assert tr.parse_starting_date("", "16:10") is None
+
+
+def test_hora_un_solo_digito_formato_realmente_observado():
+    """5. Formato de hora realmente observado en el histórico (ver
+    drills-startingdate-rule.md): 'H:MM', un solo dígito de hora, sin cero
+    a la izquierda -- confirmado como válido en el 99,97% de las filas
+    cruzadas."""
+    parsed = tr.parse_starting_date("08/03/2010", "9:05")
+    assert parsed == datetime(2010, 3, 8, 9, 5)
+
+
+def test_hora_nunca_tiene_segundos():
+    """6. Segundos -- 'Hora' (varchar(5)) no tiene componente de segundos;
+    si 'Fecha' llegara con segundos propios, el segundo de Hora (siempre
+    0) reemplaza igualmente el tiempo completo -- no se conservan segundos
+    residuales de Fecha una vez Hora es válida."""
+    parsed = tr.parse_starting_date("08/03/2010 12:30:45", "16:10")
+    assert parsed == datetime(2010, 3, 8, 16, 10)
+    assert parsed.second == 0
+
+
+@pytest.mark.parametrize("hora_invalida", ["11:", "1:", "2:.30", "25:00", "12:60", "mediodia"])
+def test_hora_invalida_degrada_a_solo_fecha_sin_crashear(hora_invalida):
+    """7. Input inválido -- formatos corruptos realmente observados en el
+    histórico (ver drills-startingdate-rule.md, 4/12091 filas) degradan a
+    solo fecha, nunca lanzan excepción ni inventan una hora."""
+    parsed = tr.parse_starting_date("08/03/2010", hora_invalida)
+    assert parsed == datetime(2010, 3, 8)
+    assert tr.parse_hora(hora_invalida) is None
+
+
+def test_formato_final_starting_date_sin_regresion():
+    """8. No regresión del formato final esperado por el Project Contract
+    ('dd/MM/yyyy HH:mm') -- ver config/exports/drills.yaml."""
+    parsed = tr.parse_starting_date("08/03/2010", "16:10")
+    assert tr.format_starting_date(parsed) == "08/03/2010 16:10"
+
+
+# --------------------------------------------------------------------------
 # 4. CS_HistoricalOriginID numérico entero
 # --------------------------------------------------------------------------
 

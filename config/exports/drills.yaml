@@ -142,7 +142,7 @@ fields:
     validation: "pattern:^[^-]+-HIST-[^-]+-\\d{2}/\\d{2}/\\d{4}$"
     evidence_id: "AFD-DRILLS-REFERENCE-001"
 
-  - source: "Fecha"
+  - source: ["Fecha", "Hora"]  # Sprint 9.3: Hora combina hora:minuto -- ver transformations.py::parse_starting_date
     target: "StartingDate"
     required: true
     transformation: "parse_starting_date"

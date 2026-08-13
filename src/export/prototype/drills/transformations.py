@@ -61,32 +61,75 @@ def _is_missing(value) -> bool:
 # StartingDate
 # --------------------------------------------------------------------------
 
-def parse_starting_date(value) -> datetime | None:
+# `Hora` (origen, `varchar(5)`) -- regla StartingDate = fecha(Fecha) +
+# hora:minuto(Hora), reconstruida y verificada en Sprint 9.3 contra el ETL
+# real (`MapeoSims`: el origen declarado de "Start Date" es
+# "FechaHoraCombinado" = Fecha+Hora, nunca "Fecha" sola -- esa columna
+# siempre llega vacía desde SQL, `'' as FechaHoraCombinado`, la
+# combinación nunca se materializó ahí) y cruzada empíricamente contra
+# 12.091 filas reales de `DB_OrigenSim`/`CSV_SIM` del mismo workbook:
+# 12.087 coinciden exactamente (99,97%). Las 4 discordantes tienen `Hora`
+# corrupta en origen (`'11:'`, `'1:'`, `'2:.30'`, o un valor que no es
+# simple concatenación) -- el patrón las rechaza por diseño, nunca las
+# adivina (ver `docs/07-developer-guide/drills-startingdate-rule.md`).
+_HORA_PATTERN = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def parse_hora(hora) -> tuple[int, int] | None:
+    """Parsea `Hora` a `(hora, minuto)` en formato `H:MM`/`HH:MM`, 24h.
+
+    Devuelve `None` si está vacía o no encaja en el formato observado --
+    nunca inventa ni corrige un valor corrupto (ver nota de módulo)."""
+    if _is_missing(hora):
+        return None
+    text = str(hora).strip()
+    match = _HORA_PATTERN.match(text)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def parse_starting_date(value, hora=None) -> datetime | None:
     """Convierte `Fecha` (origen) a `datetime`, aceptando tanto un
     `datetime`/`Timestamp` ya materializado como una cadena en varios
     formatos observados (con u sin hora, con u sin segundos).
 
-    Devuelve `None` si el valor está vacío o no es interpretable como
+    `hora` (origen `Hora`, opcional): si se proporciona y es interpretable
+    (ver `parse_hora`), sustituye el componente hora:minuto de `value` --
+    regla verificada en Sprint 9.3 (ver comentario sobre `_HORA_PATTERN`).
+    Con `hora=None`, vacía o no interpretable, el resultado es IDÉNTICO al
+    de antes de este cambio (solo la fecha) -- nunca se inventa una hora.
+
+    Devuelve `None` si `value` está vacío o no es interpretable como
     fecha -- nunca inventa una fecha por defecto.
     """
     if _is_missing(value):
         return None
     value = _to_native(value)
+    base: datetime | None = None
     if isinstance(value, datetime):
-        return value
-    if isinstance(value, pd.Timestamp):
-        return value.to_pydatetime()
-    if isinstance(value, date):
-        return datetime(value.year, value.month, value.day)
-    if isinstance(value, str):
+        base = value
+    elif isinstance(value, pd.Timestamp):
+        base = value.to_pydatetime()
+    elif isinstance(value, date):
+        base = datetime(value.year, value.month, value.day)
+    elif isinstance(value, str):
         text = value.strip()
         for fmt in _DATE_FORMATS:
             try:
-                return datetime.strptime(text, fmt)
+                base = datetime.strptime(text, fmt)
+                break
             except ValueError:
                 continue
+
+    if base is None:
         return None
-    return None
+
+    parsed_hora = parse_hora(hora)
+    if parsed_hora is not None:
+        hour, minute = parsed_hora
+        return datetime(base.year, base.month, base.day, hour, minute)
+    return base
 
 
 def format_starting_date(value: datetime, date_format: str = "dd/MM/yyyy HH:mm") -> str:

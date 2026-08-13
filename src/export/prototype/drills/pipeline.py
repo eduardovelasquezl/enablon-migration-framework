@@ -310,7 +310,8 @@ def _transform_rows(
         row_key = historical_id or f"row_{stats.rows_read}"
 
         raw_fecha = row.get("Fecha")
-        starting_date = tr.parse_starting_date(raw_fecha)
+        raw_hora = row.get("Hora")
+        starting_date = tr.parse_starting_date(raw_fecha, raw_hora)
         if _empty(raw_fecha):
             stats.dates_empty += 1
             _issue(
@@ -331,6 +332,22 @@ def _transform_rows(
             )
         else:
             stats.dates_valid += 1
+            # Sprint 9.3: StartingDate = Fecha + Hora (regla verificada, ver
+            # transformations.py). Si Hora falta o no es interpretable,
+            # StartingDate NO se bloquea -- se queda con la hora que ya
+            # traiga Fecha (00:00 en la práctica), igual que antes de este
+            # cambio, pero ahora la degradación queda registrada en vez de
+            # ser silenciosa e indistinguible del caso "coincide".
+            if tr.parse_hora(raw_hora) is None:
+                stats.dates_hora_missing_or_invalid += 1
+                _issue(
+                    issues, run_id=run_id, row_key=row_key, historical_origin_id=historical_id,
+                    historical_data_origin=historical_data_origin, category="HORA_MISSING_OR_INVALID",
+                    severity="review_required", source_value=raw_hora, mapped_value=None,
+                    message="Hora ausente o no interpretable (formato esperado H:MM/HH:MM) -- "
+                            "StartingDate usa solo la fecha, sin componente de hora.",
+                    evidence_id="evidence:sql_source.simulacros_dataset", included_in_csv=True,
+                )
 
         reference_result = tr.build_reference(typology_result.value, historical_id, starting_date)
 
@@ -599,13 +616,14 @@ def run(
             if mode == MODE_SAMPLE else
             "se exportan todas las filas devueltas por la consulta, sujeto a max_rows_per_query de config/databases.yaml."
         ),
-        "HALLAZGO (confirmado contra SQL Server real y el CSV histórico en este incremento): "
-        "'StartingDate' se deriva solo de 'Fecha', que en la base de datos real suele tener la "
-        "hora truncada a 00:00 -- la hora real del simulacro vive en la columna separada 'Hora' "
-        "(varchar(5)), ya seleccionada por la SQL de origen pero sin usar. La propia consulta "
-        "reserva una columna vacía 'FechaHoraCombinado' para esta combinación, nunca implementada. "
-        "No se ha adivinado la regla exacta de combinación -- StartingDate queda con la hora "
-        "truncada hasta que se confirme. No afecta a 'Reference' (usa solo la fecha, sin hora).",
+        "RESUELTO (Sprint 9.3, ver docs/07-developer-guide/drills-startingdate-rule.md): "
+        "'StartingDate' combina 'Fecha' + 'Hora' (regla reconstruida del ETL real -- MapeoSims "
+        "declara 'FechaHoraCombinado', no 'Fecha' sola, como origen de 'Start Date' -- y verificada "
+        "contra 12.091 filas reales del mismo workbook: 12.087 coinciden exactamente, 99,97%). "
+        "Si 'Hora' falta o no es interpretable (formato esperado H:MM/HH:MM), la fila no se excluye: "
+        "StartingDate usa solo la fecha (mismo comportamiento que antes de este incremento), y queda "
+        "registrado como incidencia HORA_MISSING_OR_INVALID -- nunca silencioso. No afecta a "
+        "'Reference' (usa solo la fecha, sin hora, regla distinta y ya aprobada).",
         "HALLAZGO (confirmado por comparación cuantitativa contra el CSV histórico en este "
         "incremento): 'CS_ImpactedEntities' coincide en 9 de 19 filas comparables de la muestra "
         "-- el resto resuelve a un código hermano bajo la misma rama (p. ej. 'EPLR.FAB.P04-MMH' "
@@ -613,7 +631,7 @@ def run(
         "sin confirmación de que siga siendo fiel entidad por entidad). Ver comparison_report.yaml "
         "de esta ejecución para el detalle exacto.",
     ]
-    open_questions = ["OQ-ETL-05", "OQ-ETL-06", "OQ-ENT-04", "OQ-ETL-02", "OQ-OBJ-07", "OQ-ETL-07-NEW-FECHA-HORA"]
+    open_questions = ["OQ-ETL-05", "OQ-ETL-06", "OQ-ENT-04", "OQ-ETL-02", "OQ-OBJ-07"]
 
     manifest = build_export_manifest(
         run_id=run_id,

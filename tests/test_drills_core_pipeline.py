@@ -43,6 +43,7 @@ def _fake_dataframe() -> pd.DataFrame:
         "IDSimulacro": [440, 441],
         "IDTipo": [365, 366],       # -> CS_Typology: PEI, GEN (reference_data.typology_lookup)
         "Fecha": ["08/03/2010", "09/03/2010"],
+        "Hora": ["12:30", "08:00"],
         "IDLetra": [258, 259],      # -> CS_Letter: A, B
         "IDUnidadOrg": [278, 278],  # -> CS_ImpactedEntities: MCPF.HIS (catálogo real)
         "Estado": ["Terminado", "En Curso"],  # -> Validated, Pending validation

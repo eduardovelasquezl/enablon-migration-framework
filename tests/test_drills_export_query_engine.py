@@ -31,6 +31,7 @@ _FAKE_ROWS = pd.DataFrame(
         "IDTipo": [365, 366],
         "IDSimulacro": [1001, 1002],
         "Fecha": ["01/06/2020 10:00:00", "02/06/2020 11:00:00"],
+        "Hora": ["10:00", "11:00"],
         "IDLetra": [None, None],
         "IDUnidadOrg": [None, None],
         "Estado": [None, None],

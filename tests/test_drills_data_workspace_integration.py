@@ -32,6 +32,7 @@ def _fake_dataframe() -> pd.DataFrame:
         "IDSimulacro": [440],
         "IDTipo": [365],
         "Fecha": ["08/03/2010"],
+        "Hora": ["12:30"],
         "IDLetra": [258],
         "IDUnidadOrg": [278],
         "Estado": ["Terminado"],
@@ -106,6 +107,32 @@ def _patch_run_query(monkeypatch):
     fake_df = _fake_dataframe()
     monkeypatch.setattr(extractor_mod, "run_query", lambda *a, **k: fake_df.copy())
     yield
+
+
+def test_pipeline_hora_invalida_no_excluye_fila_y_queda_registrado(tmp_path, monkeypatch):
+    """Sprint 9.3: una fila con 'Hora' ausente/inválida no se excluye del
+    CSV -- StartingDate degrada a solo fecha (mismo comportamiento que
+    antes de este incremento) y queda registrada como incidencia no
+    bloqueante, nunca silenciosa. Datos sintéticos, sin SQL real."""
+    monkeypatch.delenv("EMF_DATA_ROOT", raising=False)
+    df = pd.DataFrame({
+        "IDSimulacro": [1, 2],
+        "IDTipo": [365, 365],
+        "Fecha": ["08/03/2010", "09/03/2010"],
+        "Hora": ["16:10", "11:"],  # fila 2: formato corrupto real observado
+        "IDLetra": [258, 258],
+        "IDUnidadOrg": [278, 278],
+        "Estado": ["Terminado", "Terminado"],
+    })
+    monkeypatch.setattr(extractor_mod, "run_query", lambda *a, **k: df.copy())
+
+    result = pipeline_mod.run(mode="sample", limit=10, output_root=tmp_path)
+
+    import yaml
+    report = yaml.safe_load(result.validation_report_path.read_text(encoding="utf-8"))
+    assert report["counts"]["rows_exported"] == 2  # ninguna fila excluida
+    assert report["dates"]["hora_missing_or_invalid"] == 1
+    assert report["dates"]["valid"] == 2
 
 
 def test_pipeline_sin_workspace_externo_no_genera_comparison_report(tmp_path, monkeypatch):

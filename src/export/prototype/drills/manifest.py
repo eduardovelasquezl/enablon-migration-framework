@@ -69,6 +69,7 @@ class RunStats:
     dates_valid: int = 0
     dates_invalid: int = 0
     dates_empty: int = 0
+    dates_hora_missing_or_invalid: int = 0
 
     output_path: str = ""
     output_encoding: str = ""
@@ -193,6 +194,7 @@ def build_validation_report(stats: RunStats) -> dict:
             "valid": stats.dates_valid,
             "invalid": stats.dates_invalid,
             "empty": stats.dates_empty,
+            "hora_missing_or_invalid": stats.dates_hora_missing_or_invalid,
         },
         "output": {
             "path": stats.output_path,

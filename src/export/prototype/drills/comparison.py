@@ -19,6 +19,15 @@ from .transformations import REFERENCE_PATTERN
 NOT_AN_OFFICIAL_TEMPLATE = True
 ROLE = "historical_output_evidence"
 
+# Sprint 9.2: `_resolve_comparison_csv_path` ahora puede recibir el path
+# declarado en un workspace.yaml REAL, cuya extensión no está garantizada
+# que sea .csv (el Project Contract real de Drills en Moeve es un .xlsx,
+# ver workspace.yaml). Este comparador solo sabe leer CSV -- soportar
+# .xlsx es trabajo futuro (backlog), no de este incremento. Se detecta
+# explícitamente para devolver un resultado claro ("no soportado"), nunca
+# para intentar parsear un binario .xlsx como si fuera texto CSV.
+SUPPORTED_EXTENSIONS = frozenset({".csv"})
+
 
 @dataclass
 class HistoricalCsvInfo:
@@ -101,6 +110,16 @@ def build_comparison_report(
         return {
             "baseline": {"path": str(historical_path), "role": ROLE, "not_an_official_template": NOT_AN_OFFICIAL_TEMPLATE},
             "limitations": ["El CSV histórico declarado no existe -- no se generó comparación."],
+        }
+
+    if historical_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        return {
+            "baseline": {"path": str(historical_path), "role": ROLE, "not_an_official_template": NOT_AN_OFFICIAL_TEMPLATE},
+            "limitations": [
+                f"Extensión {historical_path.suffix!r} no soportada por este comparador "
+                f"(solo {sorted(SUPPORTED_EXTENSIONS)}) -- no se intentó leer el fichero, "
+                "no se generó comparación de contenido."
+            ],
         }
 
     info = detect_historical_csv(historical_path)

@@ -81,6 +81,14 @@ class ExecutionRequest:
     evidence_audience: str = "both"
     filters: tuple[str, ...] = field(default_factory=tuple)
     execution_id: str | None = None
+    workspace_manifest_path: str | None = None
+    """Ruta a un `workspace.yaml` real (Sprint 9.2) -- SOLO la ruta, nunca el
+    manifest ya cargado (mantiene esta clase libre de I/O). Si se declara,
+    el adaptador de cada objeto migrable es responsable de cargarlo y
+    hacerlo disponible a su pipeline (ver `ExecutionContext.state` en
+    `core_adapters.py`) en vez de fabricar un manifest sintético interno.
+    `None` (por defecto) preserva el comportamiento existente de cualquier
+    objeto que no haya migrado a este mecanismo."""
 
     def __post_init__(self) -> None:
         if not self.project:

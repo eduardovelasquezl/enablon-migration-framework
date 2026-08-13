@@ -47,6 +47,7 @@ from src.core.contracts import (
     StageStatus,
 )
 from src.core.registry import StageRegistry
+from src.core.workspace_manifest import WorkspaceManifestLoader
 from src.evidence.collector import load_run
 from src.evidence.models import EvidenceSourceError
 from src.evidence.workbook import build_workbook, save_workbook
@@ -161,6 +162,7 @@ class DrillsTransformExportStage:
                 extraction=stage_input,
                 run_id=context.execution_id,
                 timestamp=timestamp,
+                workspace_manifest=context.state.get("workspace_manifest"),
             )
         except _LEGACY_FUNCTIONAL_ERRORS as exc:
             return StageResult(
@@ -279,12 +281,29 @@ def build_execution_context(
     deliberadamente el MISMO que ya usa `pipeline.run()` hoy -- preservar
     la estructura de outputs existente es un requisito explícito de
     compatibilidad de esta fase, no una elección libre de este adaptador.
+
+    Sprint 9.2: si `request.workspace_manifest_path` está declarado, este
+    es el único punto donde se hace I/O para cargarlo (`ExecutionRequest`
+    solo transporta la ruta, nunca el manifest ya cargado -- ver su
+    docstring). El objeto `WorkspaceManifest` resultante se deja en
+    `context.state["workspace_manifest"]` -- el cauce genérico ya
+    documentado para que una etapa posterior lo recoja sin que el Core
+    tenga que conocer qué es un `WorkspaceManifest`. Un fallo al cargar
+    (fichero inexistente, YAML inválido) se propaga tal cual -- quien pasó
+    `--manifest` pidió explícitamente ese fichero; no hay fallback
+    silencioso a "sin manifest".
     """
     execution_id = request.execution_id or uuid.uuid4().hex[:12]
     started_at = _now()
     timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     output_root = Path(request.output_dir) if request.output_dir else DEFAULT_OUTPUT_ROOT
     output_dir = output_root / timestamp
+
+    state: dict[str, Any] = {}
+    if request.workspace_manifest_path:
+        state["workspace_manifest"] = WorkspaceManifestLoader.load_from_path(
+            Path(request.workspace_manifest_path)
+        )
 
     return ExecutionContext(
         execution_id=execution_id,
@@ -293,4 +312,5 @@ def build_execution_context(
         working_dir=PROJECT_ROOT,
         output_dir=output_dir,
         logger=logger or logging.getLogger("src.export.prototype.drills.core_adapters"),
+        state=state,
     )

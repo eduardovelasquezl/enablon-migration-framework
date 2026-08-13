@@ -360,10 +360,20 @@ def evidence_drills(run_ref: str | None, audience: str) -> None:
         "para 'sample' y 'full' por igual. Ver docs/01-architecture/sql-execution-guard.md."
     ),
 )
+@click.option(
+    "--manifest", "manifest_path", type=str, default=None,
+    help=(
+        "Ruta a un workspace.yaml real (p. ej. el de Moeve) -- si se declara, la "
+        "comparación contra el Project Contract (Sprint 9.2) resuelve el operational_csv "
+        "declarado en ESE manifest en vez del manifest sintético mínimo por defecto. "
+        "Opcional: sin esta opción, el comportamiento es idéntico al de antes de Sprint 9.2."
+    ),
+)
 def run_pipeline(
     project: str, object_type: str, module_: str | None, mode: str, limit: int,
     confirm_full_export: bool, output_dir: str | None, generate_evidence: bool,
     audience: str, filters: tuple[str, ...], allow_real_sql: bool,
+    manifest_path: str | None,
 ) -> None:
     """Ejecuta un objeto migrable a través del Framework Core v1
     (Execution Pipeline genérico, Fase 6 del roadmap EMF -- ver
@@ -397,6 +407,7 @@ def run_pipeline(
             project=project, object_type=module_def.module_id, module=module_, mode=mode, limit=limit,
             output_dir=output_dir, confirm_full_export=confirm_full_export,
             generate_evidence=generate_evidence, evidence_audience=audience, filters=tuple(filters),
+            workspace_manifest_path=manifest_path,
         )
     except CoreError as exc:
         click.echo(f"ERROR de configuración: {exc}", err=True)

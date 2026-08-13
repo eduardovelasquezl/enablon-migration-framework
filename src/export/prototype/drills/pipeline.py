@@ -29,7 +29,7 @@ from src.core.resource_resolver import (
     ResourceResolutionError,
     ResourceResolver,
 )
-from src.core.workspace_manifest import WorkspaceManifestLoader
+from src.core.workspace_manifest import WorkspaceManifest, WorkspaceManifestLoader
 from src.query.models import CompiledFilter
 from src.query.sql_builder import render_generated_sql_file
 
@@ -103,15 +103,21 @@ _COMPARISON_CANONICAL_NAME = "Drills"
 def _build_drills_comparison_manifest():
     """Manifest mínimo, construido en código, con el único artefacto que
     este pipeline necesita resolver (`operational_csv` de `drills`).
-    Nunca lee ni referencia un `workspace.yaml` real -- ver nota Sprint
-    8.5 arriba. El nombre de fichero (`Drills.csv`) sigue la convención
-    de `CSV_Enablon_Operational/` (ver
+
+    Sprint 9.2: este manifest sintético ahora es el FALLBACK, no la única
+    vía -- `_resolve_comparison_csv_path` lo usa solo cuando no se le pasa
+    un `WorkspaceManifest` real (ver ese parámetro). Se conserva por
+    retrocompatibilidad con cualquier llamador que no haya migrado a pasar
+    `--manifest` (comportamiento IDÉNTICO al de antes de este incremento).
+    El nombre de fichero (`Drills.csv`) sigue la convención de
+    `CSV_Enablon_Operational/` (ver
     docs/01-architecture/workspace-naming-convention.md § 4) -- no es el
     nombre del CSV histórico conocido (`Drills-22072026-41.csv`, que seria
     Platform Contract por convención de nombre, ver
     docs/01-architecture/project-contract-model.md § 4): mientras no exista
-    un `Drills.csv` real en `CSV_Enablon_Operational/`, la comparación
-    simplemente no se genera (mismo comportamiento opcional de siempre)."""
+    un `Drills.csv` real en `CSV_Enablon_Operational/` Y no se haya pasado
+    un manifest real, la comparación simplemente no se genera (mismo
+    comportamiento opcional de siempre)."""
     return WorkspaceManifestLoader.load_from_dict({
         "project": {
             "id": _COMPARISON_PROJECT_ID, "display_name": "Moeve",
@@ -141,16 +147,25 @@ def _build_drills_comparison_manifest():
     })
 
 
-def _resolve_comparison_csv_path() -> Path | None:
-    """Intenta resolver el CSV de comparación (Project Contract) de
+def _resolve_comparison_csv_path(workspace_manifest: WorkspaceManifest | None = None) -> Path | None:
+    """Intenta resolver el CSV/XLSX de comparación (Project Contract) de
     Drills desde el workspace externo de datos vía `ResourceResolver`. La
     comparación es y sigue siendo OPCIONAL (comportamiento sin cambios de
     fondo respecto a antes de este incremento): si `EMF_DATA_ROOT` no está
     declarado, o el fichero no está presente en el workspace, se devuelve
-    `None` y `comparison_report.yaml` simplemente no se genera."""
+    `None` y `comparison_report.yaml` simplemente no se genera.
+
+    Sprint 9.2: `workspace_manifest`, si se pasa, es el manifest REAL de
+    la ejecución (cargado fuera de esta función -- ver
+    `core_adapters.py::build_execution_context`) y se usa TAL CUAL, sin
+    fabricar nada en código -- este pipeline ya no asume qué nombre de
+    fichero declara ese manifest para `operational_csv` de `drills`. Con
+    `workspace_manifest=None` (todo llamador existente, hoy) el
+    comportamiento es IDÉNTICO al de antes de este incremento: se fabrica
+    el manifest sintético mínimo de siempre."""
+    manifest = workspace_manifest if workspace_manifest is not None else _build_drills_comparison_manifest()
     try:
         workspace = get_default_data_workspace()
-        manifest = _build_drills_comparison_manifest()
         resolver = ResourceResolver(manifest, workspace)
         resolved = resolver.resolve(ResourceRequest(
             module_id=_COMPARISON_MODULE_ID,
@@ -466,6 +481,7 @@ def run(
     extraction: ExtractionResult | None = None,
     run_id: str | None = None,
     timestamp: str | None = None,
+    workspace_manifest: WorkspaceManifest | None = None,
 ) -> PipelineResult:
     """Orquesta la exportación completa de Drills.
 
@@ -478,6 +494,12 @@ def run(
     que un orquestador externo reutilice una extracción ya realizada por
     una etapa `query` separada (evitando repetir la consulta SQL) y alinee
     `run_id`/`timestamp` con su propio `execution_id`/carpeta de salida.
+
+    `workspace_manifest` (Sprint 9.2): también ADITIVO -- `None` (el caso
+    de cualquier llamador existente) preserva el comportamiento exacto de
+    antes (`_resolve_comparison_csv_path` fabrica su manifest sintético
+    mínimo). Si se pasa un `WorkspaceManifest` real, la comparación lo usa
+    directamente en vez de fabricar nada.
     """
     if mode not in (MODE_SAMPLE, MODE_FULL):
         raise ValueError(f"Modo no soportado: {mode!r}")
@@ -613,7 +635,7 @@ def run(
     write_export_manifest(manifest, manifest_path)
 
     comparison_report_path = None
-    historical_path = _resolve_comparison_csv_path()
+    historical_path = _resolve_comparison_csv_path(workspace_manifest)
     if historical_path is not None:
         comparison_report = comparison_mod.build_comparison_report(
             historical_path=historical_path,

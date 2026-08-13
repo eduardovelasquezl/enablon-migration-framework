@@ -1,0 +1,399 @@
+INFORME - DRILLS CLOSURE & EMF ACCELERATION
+================================================================================
+
+Fecha: 2026-08-13
+Rama: feature/drills-filtered-exports
+SQL real ejecutado en este cierre: 0 (trabajo documental/arquitectonico
+sobre lo ya validado en Sprint 9.1-9.3.1)
+
+--------------------------------------------------------------------------------
+1. ESTADO FINAL DE DRILLS
+--------------------------------------------------------------------------------
+
+DRILLS_FUNCTIONALLY_VALIDATED
+
+VALIDADO (evidencia real):
+- Pipeline real ejecutado 3 veces contra SQL Server, login readonly,
+  SQL Execution Guard verificado.
+- Filtro server-side verificado end-to-end.
+- Sample comparable repetido identico (origin_org_unit_id:eq:147,
+  limit=15) antes y despues del fix de StartingDate.
+- 110 filas SQL, 15 exportadas, 0 exclusiones, 0 warnings, 0 errores en
+  ambas ejecuciones del sample comparable.
+- Evidence internal/client generada correctamente 3 veces.
+- Project Contract resuelto desde workspace.yaml real (Sprint 9.2), sin
+  uso del manifest sintetico legacy.
+- Entity resolution: 15/15 resueltas a entidad viva; "No migra"
+  confirmado EXPECTED con evidencia de catalogo (74% de unidades de
+  Centro 4 marcadas No migra).
+- Mappings implementados: CS_Typology, Reference, CS_Letter,
+  CS_ImpactedEntities, CS_WorkflowStatus, CS_HistoricalDataOrigin,
+  CS_HistoricalOriginID - 15/15 en ambas ejecuciones.
+- StartingDate: regla Fecha+Hora reconstruida (ETL real) y verificada
+  (12091 filas, 99.97%), implementada y reconfirmada contra SQL real:
+  15/15 exacto.
+- RESULTADO TOTAL: 120/120 comparaciones semanticas correctas (100%).
+- Outputs reales fuera de Git en las 3 ejecuciones.
+
+PENDIENTE - dos categorias distintas:
+
+BLOCKER de DRILLS_ACCEPTED_FOR_FULL_READINESS:
+  NameEN -> UNRESOLVED_BLOCKING - EXTERNAL CONFIRMATION REQUIRED
+  Hipotesis fuerte, NO regla verificada: BreveDescripcion + Titlefix ->
+  NameEN (99.2% / 11957 filas). El ETL no nombra un DatoOrigen concreto
+  (usa "*"). Decision humana ya tomada (Micro-Sprint 9.3.1): confirmar
+  origen antes de implementar. Fuentes locales agotadas para esta
+  pregunta - no se reabre en este cierre.
+
+DEUDA NO BLOQUEANTE / INCREMENTAL (clasificada individualmente):
+  - Comparison automatico no procesa .xlsx: automatizacion, no bloquea
+    full (la comparacion manual ya demostro 120/120).
+  - CS_Duration: FUTURE_INCREMENT (regla conocida, no reabierta).
+  - CS_HistoricalDrillAttendees: FUTURE_INCREMENT (regla conocida,
+    datos personales, no reabierta).
+  - CS_HistoricalRecord: FUTURE_INCREMENT (constante "Yes", bajo riesgo).
+  - CS_EnvConsequences, CS_ObservationsCommunication:
+    UNRESOLVED_NON_BLOCKING (sin columna SQL identificada).
+  - CS_HistoricalAttachedFiles: FUTURE_INCREMENT (fase transversal de
+    adjuntos).
+  - CS_HistoricalUserId/UserName/DrillResponsibleName:
+    OUT_OF_SCOPE_CONFIRMED (datos personales, decision ya tomada).
+  - Environment bootstrap (EMF_DATA_ROOT sin dotenv en comandos
+    workspace): IMPROVEMENT ya documentado (Sprint 9.0).
+  - Export Engine monolitico (pipeline.run() de Drills): deuda
+    arquitectonica, ver seccion 3.C - no bloquea a Drills, ralentiza al
+    siguiente modulo si se copia tal cual.
+
+No se invento ningun blocker nuevo. Lista identica a la cerrada en
+Sprint 9.3/9.3.1, sin reabrir NameEN.
+
+--------------------------------------------------------------------------------
+2. READINESS ESTRUCTURAL VS. FUNCIONAL - ANALISIS, SIN IMPLEMENTAR
+--------------------------------------------------------------------------------
+
+El hallazgo es real: "workspace readiness drills/full" devuelve
+ready_with_warnings/0 blockers, mientras la evaluacion funcional dice
+que NameEN bloquea DRILLS_ACCEPTED_FOR_FULL_READINESS. No es una
+contradiccion: son dos preguntas distintas, cada una respondida
+correctamente.
+
+1. Son dos conceptos distintos que debemos conservar? SI.
+   WorkspaceReadinessValidator responde una pregunta ESTRUCTURAL,
+   objetiva, binaria (existe el fichero declarado). NameEN plantea una
+   pregunta FUNCIONAL/de conocimiento, subjetiva, evolutiva (es este
+   dato suficientemente confiable). Fusionarlas perderia la garantia
+   actual de que "0 blockers estructurales" es simple y siempre
+   verificable offline.
+
+2. Deberia el futuro WorkspaceReadinessValidator incorporar blockers de
+   conocimiento gobernado? NO, tal cual esta disenado hoy - haria que
+   un validador pensado para I/O/estructura (nunca abre ni lee
+   contenido) tuviera que interpretar el estado semantico de cada
+   campo/KC-*, un tipo de conocimiento que cambia con decisiones
+   humanas, no con la presencia de un fichero.
+
+3. Recomendacion: CAPA SEPARADA, mismo patron ya validado (validador
+   puro, vocabulario cerrado frozenset, nunca abre SQL) pero operando
+   sobre config/exports/<modulo>.yaml (fields[]/excluded_columns[]) +
+   un registro ligero de conocimiento por campo (mismo vocabulario ya
+   usado manualmente: VERIFIED / STRONGLY_EVIDENCED /
+   UNRESOLVED_BLOCKING / ...). Produciria un veredicto independiente
+   (MAPPING_READY / MAPPING_READY_WITH_ACCEPTED_RISK / MAPPING_BLOCKED),
+   compuesto JUNTO A, nunca dentro de, WorkspaceReadinessValidator. Sin
+   nombre definitivo fijado.
+
+NO IMPLEMENTADO en este cierre - no es trivial ni corrige una
+inconsistencia peligrosa (nadie puede cargar nada a Enablon desde este
+repo; approved_for_enablon_import=false ya es un cierre estructural
+adicional). Documentado como diseno para un sprint posterior.
+
+--------------------------------------------------------------------------------
+3. DRILLS COMO GOLDEN REFERENCE MODULE - INVENTARIO
+--------------------------------------------------------------------------------
+
+A. CORE GENERICO YA REUTILIZABLE (sin cambios):
+   WorkspaceManifest/WorkspaceManifestLoader, ResourceResolver,
+   DataWorkspace, ModuleRegistry/ModuleDefinition, StageRegistry,
+   contratos Framework Core v1 (ExecutionRequest/ExecutionContext/
+   PipelineDefinition/StageResult/ArtifactReference/StageMetrics), SQL
+   Execution Guard, query_runner.py/connection.py (con observabilidad
+   de Sprint 9.1), WorkspaceReadinessValidator (alcance estructural),
+   evidence/collector.py.
+
+B. DRILLS-SPECIFIC PERO CON INTERFAZ CORRECTA (patron a replicar):
+   - bootstrap/module_registry.py (composition root) - forma exacta
+     que debe tomar el registro de cualquier modulo nuevo.
+   - core_adapters.py (4 Stages + register_drills_stages +
+     build_drills_pipeline_definition + build_execution_context).
+   - DRILLS_FILTER_CATALOG - datos especificos, mecanismo generico
+     (ObjectFilterCatalog/compile_filter_tokens/compose_filtered_sql).
+   - config/exports/drills.yaml - datos especificos, esquema
+     reutilizable como plantilla.
+
+C. DRILLS-SPECIFIC QUE DEBERIA GENERALIZARSE ANTES DEL 2o/3er MODULO:
+   - pipeline.py::run() - monolitico, ya senalado como "adaptador
+     temporal" en su propio codigo. NO existe Export Engine generico
+     hoy.
+   - comparison.py - solo procesa .csv (backlog P2 ya documentado).
+   - mappings.py::EntityCatalog - generico en forma, atado a la
+     estructura del catalogo antiguo de Simulacros.
+   - "Project Contract definitivo" (18 columnas, Sprint 9.3) - tabla
+     manual, no derivada automaticamente.
+
+D. PROTOTIPO/DEUDA QUE NO DEBEMOS COPIAR:
+   - Copiar-pegar pipeline.run() duplicaria la deuda.
+   - Manifest sintetico de comparacion (fallback) - el siguiente modulo
+     debe usar --manifest desde el diseno inicial.
+   - "HALLAZGO: ..." como strings sueltos en limitations - ver seccion 7
+     (Field Constraints) para alternativa declarativa.
+
+--------------------------------------------------------------------------------
+4. MODULE ADAPTER CONTRACT v0.1 (PROPUESTA, NO IMPLEMENTADA)
+--------------------------------------------------------------------------------
+
+QUE PROVEE CORE (el modulo no lo reimplementa):
+  ExecutionRequest/ExecutionContext/PipelineDefinition/StageResult,
+  StageRegistry, ModuleRegistry, WorkspaceManifest+ResourceResolver,
+  SQL Execution Guard, Query Engine (el modulo solo aporta su
+  catalogo), evidence/collector.py, WorkspaceReadinessValidator.
+
+QUE DECLARA CADA MODULO (config, sin codigo):
+  module_id/canonical_name/aliases; source (conexion, SQL, max_rows);
+  output (encoding/delimiter/quoting); fields[] (source/target/
+  transformation/validation/evidence_id/default); excluded_columns[];
+  reference_data.
+
+QUE PROGRAMA CADA MODULO (codigo minimo, mismo patron que Drills):
+  Su ObjectFilterCatalog propio; sus transformaciones puras; su
+  composition root (register_stages, build_pipeline_definition,
+  build_execution_context); su funcion de extraccion.
+
+QUE SE OBTIENE DEL WORKSPACE (sin codigo nuevo):
+  Project Contract via ResourceResolver+--manifest; Template como
+  control secundario.
+
+QUE SE OBTIENE DE KNOWLEDGE (hoy solo documental):
+  Catalogo de entidad aceptado por modulo; conflictos KC-* (sin
+  conectar a readiness, ver seccion 2).
+
+QUE VALIDA EL FRAMEWORK AUTOMATICAMENTE HOY:
+  Estructura del manifest; presencia fisica de artefactos requeridos;
+  autorizacion SQL; sintaxis de filtros contra catalogo cerrado.
+
+QUE NO VALIDA AUTOMATICAMENTE TODAVIA:
+  Fidelidad de mapping por campo (manual); estado de conocimiento
+  gobernado por campo (seccion 2).
+
+NO implementado - refactor no trivial (extraer el Export Engine),
+correctamente fuera de alcance de este cierre.
+
+--------------------------------------------------------------------------------
+5. SIGUIENTE MODULO - RECOMENDACION BASADA EN EVIDENCIA
+--------------------------------------------------------------------------------
+
+Bypass: conocimiento alto/cerrado, ETL 31 hojas sin huerfanas, SQL
+  presente, Operational unico sin ambiguedad, Template AUSENTE (gap no
+  ambiguedad), mapping resuelto (First_Axis), SIN conflictos abiertos,
+  dependencia cross-module baja, COMPLEJIDAD BAJA, valor de
+  generalidad ALTO (2o objeto real de un solo target, sin forzar
+  cambios de Core).
+
+Safety Meetings: conocimiento alto/cerrado, ETL 40 hojas, Operational
+  Y Template AMBIGUOS (2 candidatos cada uno), mapping resuelto, sin
+  conflictos criticos, complejidad media, valor alto PERO fuerza
+  resolver el limite de esquema "1 artefacto por kind" (seccion 2)
+  como prerrequisito.
+
+MOC: conocimiento alto con defectos documentados, 2 ETL, Operational y
+  Template ambiguos, mapping resuelto, CONFLICTO ABIERTO (hallazgo_1,
+  sistema GCT con IDCentro propio), alimenta Acciones, complejidad
+  alta, valor medio (arrastra Hallazgo #1).
+
+OPS: conocimiento medio, ETL 62 hojas, Operational unico, Template
+  ausente, mapping resuelto, nombre real "JSO" no confirmado como
+  "OPS", complejidad baja-media, valor medio.
+
+Events: conocimiento alto pero disperso, 2 ETL con FULL JOIN,
+  Operational con 12 CANDIDATOS (backlog P1-07), Template 6
+  candidatos, CONFLICTO ABIERTO (Hallazgo #1 confirmado aqui),
+  complejidad muy alta - NO como 2o modulo.
+
+Inspections: conocimiento alto, ETL 85 hojas, Operational con 9
+  candidatos (backlog P1-08), complejidad alta, probable Hallazgo #1 -
+  NO como 2o modulo.
+
+Action Plans: conocimiento MUY alto (C003, Sprint 8.9), 2 ETL de
+  AMBITOS DISTINTOS, Operational con 3 candidatos de columnas
+  distintas, Template AUSENTE, mapping BLOQUEADO por KC-AP-001 abierto,
+  TRANSVERSAL a todos los modulos, complejidad muy alta - alto valor
+  pero alto coste/riesgo.
+
+RECOMENDACION: BYPASS como segundo modulo. No es la opcion con mas
+conocimiento acumulado (eso es Action Plans), pero minimiza friccion
+sin dejar de ser una prueba real de generalidad: mismo patron
+un-solo-objeto que Drills, sin Hallazgo #1, sin conflictos abiertos,
+sin ambiguedad de Operational, mapping ya resuelto. Camino mas corto
+para demostrar "DRILLS WAS NOT A ONE-OFF".
+
+Action Plans DESCARTADO explicitamente como #2 (tal como advertia el
+propio encargo): mucho conocimiento no compensa la complejidad
+transversal + KC-AP-001 abierto.
+
+Safety Meetings recomendado como #3 - especificamente porque FUERZA a
+resolver el limite de esquema "1 artefacto por kind", y conviene
+abordarlo como pieza propia de trabajo, no mezclado con la primera
+repeticion del patron Drills.
+
+--------------------------------------------------------------------------------
+6. ROADMAP CONCEPTUAL (SIN FALSA PRECISION)
+--------------------------------------------------------------------------------
+
+1. Core/architecture: solido, probado con datos reales. Falta: Export
+   Engine generico, capa ContractReadiness, soporte XLSX. Bloquea:
+   nada critico hoy.
+
+2. Drills reference implementation: DRILLS_FUNCTIONALLY_VALIDATED.
+   Falta: NameEN (bloqueo externo). Bloquea: solo
+   ACCEPTED_FOR_FULL_READINESS.
+
+3. Knowledge ingestion/governance: metodologia probada (KC-*, C003).
+   Falta: conectar a readiness automatizada. Bloquea: automatizacion,
+   no el trabajo manual ya hecho.
+
+4. Multi-module capability: 1 modulo registrado (Drills). Falta:
+   registrar un 2o modulo real (single-object primero). Bloquea: los 3
+   limites de esquema bloquean modulos multi-objeto, no single-object.
+
+5. Action Plans/cross-module: mucho conocimiento, adaptador solo
+   disenado. Falta: resolver KC-AP-001, implementar el adaptador.
+   Bloquea: es el mas complejo, no priorizar como #2.
+
+6. Validation/comparison: 120/120 demostrado manualmente. Falta:
+   soporte XLSX generico (P2). Bloquea: solo automatizacion.
+
+7. Evidence: generado correctamente 3 veces. Falta: confirmar
+   genericidad completa de workbook.py (no verificado a fondo).
+   Bloquea: nada conocido.
+
+8. Readiness: estructural, probado. Falta: capa funcional/conocimiento
+   (seccion 2). Bloquea: distincion automatica "puede ejecutar" vs "es
+   confiable".
+
+9. UI: sin empezar. Falta: todo. Bloquea: nada todavia (objetivo, no
+   bloqueante).
+
+10. Packaging/distribution: sin empezar. Falta: todo. Bloquea: nada
+    todavia.
+
+HITOS:
+
+HITO A - Segundo modulo ejecutable offline/sample: registrar Bypass en
+ModuleRegistry (mismo patron que Drills) + su config/exports/
+bypass.yaml + su filter catalog + sus transformaciones. No requiere
+resolver ningun gap de Core.
+
+HITO B - Segundo modulo validado contra datos reales: mismo patron de
+Sprint 9.2/9.3 - autorizacion SQL real + comparacion manual contra su
+Operational unico.
+
+HITO C - EMF procesa varios modulos de Moeve de forma consistente:
+requiere resolver el limite "1 artefacto por kind" antes de Safety
+Meetings/MOC/Events, y decidir la capa ContractReadiness/
+MappingReadiness para no repetir la comparacion manual en cada modulo.
+
+HITO D - Primer EMF "usable" en migraciones reales: requiere Action
+Plans (transversal, alto valor) y probablemente el Export Engine
+generalizado para no multiplicar pipeline.run() monoliticos.
+
+HITO E - Producto amigable para usuario final: UI web local + backend
+EMF desacoplado + empaquetado como aplicacion de escritorio/.exe -
+decision de producto ya tomada, OBJETIVO ARQUITECTONICO CONSERVADO,
+SIN DISENAR TODAVIA.
+
+--------------------------------------------------------------------------------
+7. MEJORA FUTURA - FIELD CONSTRAINTS (DOCUMENTADA, NO IMPLEMENTADA)
+--------------------------------------------------------------------------------
+
+Necesidad real: Enablon impone restricciones por campo (p. ej. longitud
+maxima de un Title/Name) que hoy solo se resolverian con logica ad hoc
+dispersa (value[:20]) si empezaramos a implementar campos de texto
+libre como NameEN.
+
+RECOMENDACION DE UBICACION: Project Contract / Field Contract - como
+extension declarativa de las entradas fields[] que ya existen en
+config/exports/*.yaml, aplicada por un paso de transformacion generico
+compartido (no por modulo).
+
+Conceptualmente:
+  max_length: 20
+  overflow_policy: truncate   (una de varias, NO asumir por defecto)
+
+POLITICAS A SOPORTAR, sin asumir cual es la de defecto: truncate,
+reject, warn, null, manual_review. La decision de cual aplica por
+campo es de negocio, no tecnica.
+
+Cualquier aplicacion debe quedar trazada en Evidence (valor original,
+politica aplicada, valor final) - mismo principio ya vigente ("nunca
+silencioso").
+
+NO implementado - documentado como necesidad para un sprint futuro.
+
+--------------------------------------------------------------------------------
+8. COMMITS Y PUSH
+--------------------------------------------------------------------------------
+
+90d7c89 - fix(db): add safe SQL failure diagnostics (Sprint 9.1)
+f240a7e - feat(drills): resolve comparison Project Contract from real
+          workspace manifest (Sprint 9.2)
+dff14f2 - fix(drills): derive StartingDate from combined date and time
+          (Sprint 9.3)
+da6d9b3 - docs(moeve): document Sprint 9.0 workspace activation
+          findings (Sprint 9.0, identificado y comiteado en este cierre)
+
+Los 4 commits verificados individualmente sin datos reales, sin
+outputs reales, sin workspace.yaml real, sin .env, sin
+.claude/settings.local.json, sin credenciales.
+
+PUSH REALIZADO: git push origin feature/drills-filtered-exports ->
+799da9d..da6d9b3. Confirmado local HEAD == remote HEAD =
+da6d9b371fcbc4ca0a8b6b6a9d285d2c29632001. Sin force push, sin rebase,
+sin tags, sin cambio de rama.
+
+--------------------------------------------------------------------------------
+9. TESTS FINALES
+--------------------------------------------------------------------------------
+
+755 passed, 7 skipped - confirmado antes y despues de cada commit de
+este cierre. Sin cambios de codigo en este cierre (solo
+documentacion).
+
+--------------------------------------------------------------------------------
+10. RIESGOS / DEUDA TECNICA (RESUMEN)
+--------------------------------------------------------------------------------
+
+1. NameEN - bloqueo externo, no tecnico, ya escalado a decision
+   humana.
+2. Export Engine monolitico - ralentiza al segundo modulo si se copia
+   tal cual.
+3. Comparison sin soporte XLSX - automatizacion pendiente, P2.
+4. Limite de esquema "1 artefacto por kind" - bloqueara Safety
+   Meetings/MOC/Events hasta resolverse.
+5. Sin capa ContractReadiness/MappingReadiness - distincion
+   estructural/funcional sigue siendo manual.
+6. Field Constraints - necesidad identificada, no implementada.
+
+--------------------------------------------------------------------------------
+11. ACCIONES EXPRESAMENTE NO REALIZADAS
+--------------------------------------------------------------------------------
+
+- No se ejecuto SQL real en ningun momento de este cierre.
+- No se ejecuto full export.
+- No se investigo mas a fondo NameEN.
+- No se implemento Module Adapter Contract, ContractReadiness/
+  MappingReadiness, soporte XLSX, ni Field Constraints - todo quedo
+  documentado como propuesta/diseno.
+- No se empezo Action Plans ni ningun otro modulo.
+- No se realizaron refactors oportunistas.
+- No se toco .claude/settings.local.json.
+- No se verisono ningun dato real de cliente, workspace.yaml real, ni
+  output real.

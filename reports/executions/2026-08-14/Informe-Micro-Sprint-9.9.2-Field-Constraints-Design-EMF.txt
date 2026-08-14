@@ -1,0 +1,220 @@
+INFORME - MICRO-SPRINT 9.9.2: FIELD CONSTRAINTS & TEXT NORMALIZATION DESIGN
+================================================================================
+
+Fecha: 2026-08-14
+Objetivo: convertir la evidencia real de Micro-sprint 9.9.1 en un diseno
+gobernado, preparado para implementacion futura. NO se implementa el motor
+de Field Constraints. Raw/ no modificado ni normalizado. Sin SQL real.
+
+Documentacion completa:
+reports/executions/2026-08-14/Informe-Micro-Sprint-9.9.2-Field-Constraints-Design-EMF.md
+
+--------------------------------------------------------------------------------
+FASE 0 - CIERRE DE 9.9.1
+--------------------------------------------------------------------------------
+
+Commit creado: a8ba2aa6dbc4f2971c944ee301f6c78a04df834b - fix(export):
+correct CSV Output Contract (UTF-8 BOM) across all modules. 12 ficheros,
++770/-16. Incluye el matiz pedido: UTF-8+BOM corrige el mojibake practico,
+pero Enablon usa nativamente UTF-16LE+BOM+TAB+quote-all para objetos
+padre -- no se declara UTF-8+BOM formato universal sin mas evidencia.
+Suite tras el commit: 860 passed, 7 skipped. Raw/ intacto. Sin datos
+reales ni secretos. src/core/ sin cambios.
+
+--------------------------------------------------------------------------------
+FASE 1 - INVENTARIO REAL DE FIELD SPECIFICATIONS
+--------------------------------------------------------------------------------
+
+Cabecera real en fila 13 de cada hoja de objeto (columnas Excel
+confirmadas, no inventadas): O=XML Info (nombre interno real), L/M=Short/
+Long Name (display label), C/D fila 14=Application Name/Name (objeto),
+P=Type (tipo de dato), Q=Size Max (max length, 0=sin limite), AG=Mandatory
+(Never/Add/Edit/Edit-Add, contextual), AE=Input (Never=senal real de
+solo-lectura), S=Virtual (Yes=calculado por plataforma), AK/AL=Export/
+Import, AP/AQ=Sensitivity Level/Privacy Notice (dato personal).
+
+CORRECCION propia de esta fase: la columna "Category" NO es senal de
+"campo de sistema" -- es clasificacion de dato personal (mismo grupo que
+Sensitivity/Privacy). La senal real de solo-lectura es Input=Never
+(353/1238) + Virtual=Yes (205/1238), verificado por distribucion real.
+
+No se inventa ninguna propiedad ausente del XLSX (forbidden_characters/
+replacements/overflow_policy son decisiones de proyecto, no datos Enablon).
+
+--------------------------------------------------------------------------------
+FASE 2 - MAX_LENGTH ES FIELD-SPECIFIC
+--------------------------------------------------------------------------------
+
+Confirmado con datos reales: Reference=40, CS_HistoricalDataOrigin=70,
+CS_MeetingPlace=80, CS_HistoricalAtendee=4096 -- 4 campos Text/Text Area,
+4 limites distintos. Regla: constraints.max_length se declara POR CAMPO,
+nunca un default por tipo.
+
+TitleEN: Size Max=240 (Field Specifications) vs Parametro=239 (ETL,
+Title_map, regla titlefix). Sin motor visible en el ETL -- 2 hipotesis
+registradas (margen de seguridad de 1 caracter / parametros no
+relacionados), NINGUNA CONFIRMADA. Si se implementa, la fuente autoritativa
+seria Field Specifications (240), no el Parametro del ETL (239) -- decision
+pospuesta a revision humana.
+
+--------------------------------------------------------------------------------
+FASE 3 - RESTRICCIONES DE CARACTERES: TRES CAPAS
+--------------------------------------------------------------------------------
+
+Evidencia (error real aportado por el usuario, tratado como hecho dado):
+Field "Event Title" cannot contain: " ¤ ¦ | § CR LF.
+
+Apoyo real encontrado: "¤" aparece intencionalmente como separador interno
+en un CSV "hijo" real de Enablon (Checklists Data, Sprint 9.9.1) -- indicio
+de que son caracteres de control/separador reservados por la plataforma,
+no prohibidos al azar. "|" tambien es separador interno de este propio
+proyecto (barconcat, CLAUDE.md).
+
+Diseno 3 capas: A) PLATFORM/FIELD CONSTRAINT (que prohibe Enablon de
+verdad, por campo, NO universal a todo Text/Text Area), B) PROJECT
+NORMALIZATION POLICY (que hace EMF), C) FIELD-SPECIFIC OVERRIDE
+(excepciones por campo/objeto).
+
+--------------------------------------------------------------------------------
+FASE 4 - POLITICAS DE NORMALIZACION
+--------------------------------------------------------------------------------
+
+Confirmado por el error real: " ¤ ¦ | § CR LF. NO confirmado: que "-" este
+prohibido -- la practica historica del cliente (" -> ', \ -> eliminar,
+- -> _) se registra como CANDIDATO, "- -> _" NO se aplica globalmente sin
+evidencia adicional (instruccion explicita).
+
+invalid_character_policy (enum conceptual): reject / replace / remove /
+warn (warn NUNCA modifica en silencio). Ejemplo conceptual con
+replacements declarativos por caracter -- NO implementado literalmente,
+valores ilustrativos que requeririan confirmacion campo a campo.
+
+--------------------------------------------------------------------------------
+FASE 5 - ORDEN DE TRANSFORMACION
+--------------------------------------------------------------------------------
+
+source value -> module mapping/transformation -> text normalization ->
+forbidden-character policy -> max-length policy -> final field validation
+-> CSV writer.
+
+truncate SIEMPRE despues de replacements: un replacement puede CAMBIAR la
+longitud (acortar o alargar) -- solo truncar el valor YA normalizado
+garantiza que el resultado FINAL cumple max_length.
+
+--------------------------------------------------------------------------------
+FASE 6 - TRAZABILIDAD / EVIDENCE (DISENO)
+--------------------------------------------------------------------------------
+
+FieldTransformationIssue (diseno, no implementado): module, object, field,
+historical_id, constraint_type, original_length, final_length,
+offending_characters, action (REPLACED/REMOVED/TRUNCATED/REJECTED/
+WARNING), rule. NUNCA vuelca el valor completo de campos marcados
+Confidential (Privacy) en Field Specifications (50/1238 campos reales) --
+solo caracteres ofensivos y longitudes.
+
+Superficies previstas: validation_report.yaml (nueva seccion
+field_transformations), issues.jsonl (solo Drills hoy), evidence_internal
+.xlsx (NO implementado -- fuera de alcance explicito de este sprint).
+
+--------------------------------------------------------------------------------
+FASE 7 - FIELD CATALOG: DISENO
+--------------------------------------------------------------------------------
+
+Raw XLSX (inmutable, fuera de git) -> normalizer/importer (script, nunca a
+mano) -> config/field_catalog/<objeto>.yaml (VERSIONABLE -- es metadata de
+config de Enablon, sin datos de cliente, igual que modules.yaml) ->
+overrides en config/exports/<modulo>.yaml (ya existente) -> Effective
+Field Contract en memoria.
+
+Schema minimo con columnas REALES confirmadas (type, max_length,
+mandatory, read_only, virtual, exportable, importable, reference,
+sensitivity) -- ejemplo con CS_HistoricalOriginID/CS_Level reales.
+
+Separacion en 3 niveles: Enablon standard fields / Moeve CS_* custom
+fields (372/1238 reales) / project-specific migration policy (esta ultima
+SIEMPRE en config/exports/, nunca en el catalogo derivado del XLSX).
+
+--------------------------------------------------------------------------------
+FASE 8 - VALIDACION CONTRA LOS 3 MODULOS
+--------------------------------------------------------------------------------
+
+DRILLS (hoja "Drills"): 8/8 ENCONTRADOS. Reference=40, CS_HistoricalOriginID
+=40, CS_HistoricalDataOrigin=70 (literal real de 47 caracteres, sin
+riesgo). 6/8 son CS_*.
+
+BYPASS: 0/7 ENCONTRADOS -- sin hoja propia (mismo gap que en Templates,
+Sprint 9.9.1).
+
+SAFETY MEETINGS (hoja "Group Meetings"): 7/7 ENCONTRADOS.
+CS_MeetingPlace=80, CS_HistoricalAtendee=4096. HALLAZGO DE APOYO: el Type
+real de CS_WorkflowStatus es literalmente "CCL: Scheduled/Initiated/
+Validation/Completed" -- coincide EXACTO con el workflow_status_lookup ya
+declarado en Sprint 9.7, confirmacion independiente.
+
+CAMPOS QUE REQUIEREN DECISION HUMANA (no resueltos aqui):
+1. CS_Level/CS_Letter (SM): Mandatory=Edit/Add en el spec real vs 19/1734
+   filas reales vacias -- tension sin resolver.
+2. TitleEN 240 vs 239 -- que valor usar si se implementa.
+3. Caracteres prohibidos: solo evidencia real para 1 campo de 1 modulo NO
+   implementado (Event Title) -- generalizar por Type o exigir evidencia
+   campo a campo.
+
+--------------------------------------------------------------------------------
+FASE 9 - DISENO DE TESTS FUTUROS (NO IMPLEMENTADOS)
+--------------------------------------------------------------------------------
+
+15 escenarios disenados (max_length por campo, aislamiento entre campos,
+limite exacto/por encima/por debajo, "->' , \->eliminar, |->replacement,
+CR/LF, Unicode valido no tocado incl. CJK, caracter prohibido sin
+replacement->reject/warn, replacement que alarga + truncado posterior,
+orden truncate-despues-de-replacements, aislamiento entre modulos, CS_*
+con constraint propio). No implementados -- el motor no existe todavia.
+
+--------------------------------------------------------------------------------
+PUERTA - 21 PUNTOS
+--------------------------------------------------------------------------------
+
+1. Commit 9.9.1: a8ba2aa6dbc4f2971c944ee301f6c78a04df834b.
+2. Suite tras el commit: 860 passed, 7 skipped.
+3. Schema real: cabecera fila 13 (O=XML Info, P=Type, Q=Size Max,
+   AG=Mandatory, AE=Input, S=Virtual, AK/AL=Export/Import,
+   AP/AQ=Sensitivity/Privacy), datos desde fila 14, 20 hojas de objeto.
+4. Numero de campos: 1238 totales, 372 (30%) CS_*.
+5. Evidencia max_length: field-specific confirmado, 5 valores distintos
+   (40/70/240/80/4096).
+6. TitleEN 240 vs Parametro 239: 2 hipotesis, ninguna confirmada.
+7. Diseno Field Constraint: constraints por campo (max_length,
+   forbidden_characters, replacements, invalid_character_policy).
+8. Diseno forbidden characters: 3 capas (Platform/Field Constraint,
+   Project Normalization Policy, Field-specific Override).
+9. Separacion constraint (hecho de Enablon) vs policy (decision de
+   proyecto) -- nunca mezcladas.
+10. Orden final: mapping -> normalization -> forbidden-chars -> max-length
+    -> validation -> writer. truncate SIEMPRE despues de replacements.
+11. Diseno de trazabilidad: FieldTransformationIssue, sin volcar valores
+    completos de campos Confidential (Privacy). Superficies: validation_
+    report.yaml, issues.jsonl (Drills), evidence_internal.xlsx (NO
+    implementado).
+12. Diseno Field Catalog: Raw XLSX -> normalizer -> YAML versionable ->
+    overrides en config/exports/ -> Effective Field Contract. 3 niveles
+    (Enablon standard / Moeve CS_* / project policy).
+13. Cobertura Drills: 8/8 encontrados con evidencia real.
+14. Cobertura Bypass: 0/7 -- sin hoja propia.
+15. Cobertura Safety Meetings: 7/7 encontrados; CS_WorkflowStatus confirma
+    independientemente el lookup ya declarado.
+16. Gaps/unresolved: Bypass sin evidencia de plataforma; CS_Level/
+    CS_Letter mandatory-vs-vacios sin resolver; TitleEN 240 vs 239 sin
+    confirmar; forbidden characters con evidencia de 1 solo campo.
+17. Que implementar/posponer: NADA de Field Constraints se implementa en
+    este sprint (instruccion explicita) -- todo es diseno.
+18. Archivos modificados: ninguno de codigo -- solo los 2 ficheros de este
+    informe, nuevos.
+19. Commit adicional propuesto: docs(field-constraints): register Field
+    Specifications evidence and normalization design (solo estos 2
+    ficheros).
+20. Suite final: sin cambios, 860 passed, 7 skipped.
+21. Confirmaciones: 0 SQL real, 0 full, 0 push, Raw/ intacto (solo
+    lectura), ningun dato real versionado.
+
+DETENIDO. No se ejecuta el sample SQL de Safety Meetings sin autorizacion
+explicita adicional.

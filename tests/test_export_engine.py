@@ -48,9 +48,12 @@ from src.export.engine.manifest import (
     build_run_section,
     determine_status,
 )
+from src.export.engine.identifiers import to_historical_id
+from src.export.engine.lookups import LookupResult, normalize_lookup_key, resolve_letter, resolve_workflow_status
 from src.export.engine.query_stage import GenericQueryStage, QueryStageSpec
 from src.export.engine.validator import validate_csv_structure
 from src.export.engine.values import is_missing, to_native
+from src.export.engine.writer import write_csv
 from src.query.catalog import DRILLS_FILTER_CATALOG
 
 
@@ -500,24 +503,116 @@ def test_drills_y_bypass_consumen_el_engine():
         )
 
 
-def test_bypass_ya_no_importa_directamente_de_drills_para_utilidades_genericas():
+def test_bypass_ya_no_importa_directamente_de_drills():
     """Antes de Sprint 9.6, `bypass/manifest.py` y `bypass/pipeline.py`
     importaban `write_yaml_atomic`/`write_text_atomic`/`build_query_filters_section`
-    directamente de `drills/manifest.py` -- acoplamiento bypass -> drills
-    para utilidades ya genéricas. Tras mover esas piezas al Engine, ningún
-    fichero de `bypass/` debe importar de `drills/` salvo los casos
-    explícitamente documentados como reutilización intencional
-    (`exporter.write_csv`, `transformations.resolve_letter`/`to_historical_id`,
-    ambos con evidencia propia en sus docstrings, fuera de alcance de este
-    refactor)."""
-    allowed_drills_imports = {
-        "src.export.prototype.drills.exporter",
-        "src.export.prototype.drills.transformations",
-    }
+    directamente de `drills/manifest.py`. Hasta Sprint 9.8, `bypass/pipeline.py`
+    seguía importando `exporter.write_csv` y `bypass/transformations.py`
+    importaba `resolve_letter`/`to_historical_id` de
+    `drills/transformations.py` -- las dos últimas excepciones documentadas
+    de acoplamiento bypass -> drills para utilidades sin ninguna lógica de
+    Drills. Sprint 9.8 movió ambas al Engine (`identifiers.py`/`lookups.py`/
+    `writer.py`) tras confirmar una tercera reutilización real idéntica
+    (Safety Meetings) -- ningún fichero de `bypass/` debe importar de
+    `drills/` en absoluto a partir de aquí."""
     for path in (PROJECT_ROOT / "src/export/prototype/bypass").glob("*.py"):
         imported = _imported_module_names(path)
-        offending = {
-            m for m in imported
-            if m.startswith("src.export.prototype.drills") and m not in allowed_drills_imports
-        }
-        assert not offending, f"{path.name} todavía importa de drills fuera de lo permitido: {offending}"
+        offending = {m for m in imported if m.startswith("src.export.prototype.drills")}
+        assert not offending, f"{path.name} todavía importa de drills: {offending}"
+
+
+def test_safety_meetings_ya_no_importa_directamente_de_drills():
+    """Mismo criterio que Bypass: hasta Sprint 9.8, `safety_meetings/pipeline.py`
+    importaba `exporter.write_csv` y `safety_meetings/transformations.py`
+    importaba `resolve_workflow_status`/`to_historical_id` de
+    `drills/transformations.py` -- movidas al Engine en Sprint 9.8. Ningún
+    fichero de `safety_meetings/` debe importar de `drills/`."""
+    for path in (PROJECT_ROOT / "src/export/prototype/safety_meetings").glob("*.py"):
+        imported = _imported_module_names(path)
+        offending = {m for m in imported if m.startswith("src.export.prototype.drills")}
+        assert not offending, f"{path.name} todavía importa de drills: {offending}"
+
+
+# ---------------------------------------------------------------------------
+# identifiers.py / lookups.py / writer.py (Sprint 9.8)
+# ---------------------------------------------------------------------------
+
+def test_to_historical_id_limpia_decimal_artificial():
+    assert to_historical_id(440) == "440"
+    assert to_historical_id(440.0) == "440"
+    assert to_historical_id(np.int64(440)) == "440"
+    assert to_historical_id(None) is None
+    assert to_historical_id(440.5) is None
+
+
+def test_resolve_letter_null_default_solo_para_vacio():
+    lookup = {"258": "A"}
+    assert resolve_letter(None, lookup, "NOLETTER-WRONG").status == "null_default"
+    assert resolve_letter(258, lookup, "NOLETTER-WRONG").status == "resolved"
+    assert resolve_letter(9999, lookup, "NOLETTER-WRONG").status == "unresolved"
+
+
+def test_resolve_workflow_status_sin_default_en_ningun_caso():
+    lookup = {"Terminado": "Validated"}
+    assert resolve_workflow_status(None, lookup).status == "unresolved"
+    assert resolve_workflow_status("Terminado", lookup).status == "resolved"
+    assert resolve_workflow_status("Cancelado", lookup).status == "unresolved"
+
+
+def test_normalize_lookup_key_recorta_decimal_artificial():
+    assert normalize_lookup_key(258.0) == "258"
+    assert normalize_lookup_key("258.0") == "258"
+    assert normalize_lookup_key(None) is None
+
+
+def test_write_csv_respeta_output_spec(tmp_path):
+    spec = OutputSpec(
+        filename="out.csv", encoding="utf-8", bom=False, delimiter="\t",
+        quoting="minimal", line_terminator="\r\n", include_header=True,
+    )
+    out = write_csv([{"A": "1", "B": "2"}], ["A", "B"], tmp_path / "out.csv", spec)
+    assert out.read_bytes() == b"A\tB\r\n1\t2\r\n"
+
+
+def test_write_csv_nunca_sobrescribe(tmp_path):
+    spec = OutputSpec(
+        filename="out.csv", encoding="utf-8", bom=False, delimiter=",",
+        quoting="minimal", line_terminator="\n", include_header=True,
+    )
+    path = tmp_path / "out.csv"
+    write_csv([{"A": "1"}], ["A"], path, spec)
+    with pytest.raises(FileExistsError):
+        write_csv([{"A": "2"}], ["A"], path, spec)
+
+
+def test_drills_bypass_y_safety_meetings_comparten_la_misma_funcion_no_una_copia():
+    """Prueba de identidad (`is`, no solo de comportamiento): confirma que
+    los tres módulos apuntan al MISMO objeto función del Engine tras
+    Sprint 9.8 -- si algún módulo volviera a copiar en vez de importar,
+    esta comparación por identidad lo detectaría aunque el comportamiento
+    siguiera pareciendo correcto."""
+    from src.export.prototype.bypass import transformations as bypass_tr
+    from src.export.prototype.drills import transformations as drills_tr
+    from src.export.prototype.safety_meetings import transformations as sm_tr
+
+    assert drills_tr.to_historical_id is to_historical_id
+    assert bypass_tr.to_historical_id is to_historical_id
+    assert sm_tr.to_historical_id is to_historical_id
+
+    assert drills_tr.resolve_letter is resolve_letter
+    assert bypass_tr.resolve_lookup is resolve_letter
+
+    assert drills_tr.resolve_workflow_status is resolve_workflow_status
+    assert sm_tr.resolve_lookup is resolve_workflow_status
+
+    assert drills_tr.LookupResult is LookupResult
+    assert bypass_tr.LookupResult is LookupResult
+    assert sm_tr.LookupResult is LookupResult
+
+    from src.export.prototype.bypass.pipeline import write_csv as bypass_write_csv
+    from src.export.prototype.drills.exporter import write_csv as drills_write_csv
+    from src.export.prototype.safety_meetings.pipeline import write_csv as sm_write_csv
+
+    assert drills_write_csv is write_csv
+    assert bypass_write_csv is write_csv
+    assert sm_write_csv is write_csv

@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 
 import numpy as np
 import pandas as pd
 
+from src.export.engine.identifiers import to_historical_id
+from src.export.engine.lookups import LookupResult, normalize_lookup_key as _normalize_lookup_key
+from src.export.engine.lookups import resolve_letter, resolve_workflow_status
 from src.export.engine.values import is_missing as _is_missing
 from src.export.engine.values import to_native as _to_native
 
@@ -40,6 +43,18 @@ _DATE_FORMATS = (
 # docstring de `engine/values.py`). Se conservan aquí como alias privados
 # (`_to_native`/`_is_missing`) para no tocar ninguna de sus 4 llamadas
 # internas en este fichero.
+#
+# `to_historical_id`/`LookupResult`/`resolve_letter`/`resolve_workflow_status`/
+# `normalize_lookup_key`: movidas a `src.export.engine.identifiers`/
+# `src.export.engine.lookups` en Sprint 9.8, tras confirmar una TERCERA
+# reutilización real e idéntica (Bypass Sprint 9.4, Safety Meetings Sprint
+# 9.7 -- ambos las IMPORTABAN de aquí, nunca las copiaron). Se re-exportan
+# con el mismo nombre para no tocar ninguna de sus llamadas internas en
+# este fichero (`resolve_typology` sigue usando `_normalize_lookup_key`) ni
+# las de `pipeline.py` (`tr.to_historical_id`/`tr.resolve_letter`/
+# `tr.resolve_workflow_status`, sin cambios). Ver
+# `docs/07-developer-guide/export-engine-generalization.md` para el
+# análisis completo de por qué ahora sí cruzan el umbral de evidencia.
 
 
 # --------------------------------------------------------------------------
@@ -132,58 +147,10 @@ def format_reference_date(value: datetime) -> str:
 
 
 # --------------------------------------------------------------------------
-# CS_HistoricalOriginID
+# CS_Typology -- único lookup que sigue siendo module-specific: un solo uso
+# real (Drills), sin segunda ni tercera confirmación -- no se mueve al
+# Engine en Sprint 9.8 (ver docstring de módulo).
 # --------------------------------------------------------------------------
-
-def to_historical_id(value) -> str | None:
-    """Convierte `IDSimulacro` a texto sin representación decimal
-    artificial (p. ej. `440.0` -> `"440"`, no `"440"` con resto de coma
-    flotante). Devuelve `None` si el valor está vacío."""
-    if _is_missing(value):
-        return None
-    value = _to_native(value)
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(value))
-        return None  # un ID con parte decimal real no es un ID válido -- no se trunca en silencio.
-    if isinstance(value, str):
-        text = value.strip()
-        if re.fullmatch(r"-?\d+", text):
-            return text
-        if re.fullmatch(r"-?\d+\.0+", text):
-            return text.split(".")[0]
-        return None
-    return None
-
-
-# --------------------------------------------------------------------------
-# CS_Typology / CS_Letter / CS_WorkflowStatus -- lookups documentados
-# --------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class LookupResult:
-    value: str | None
-    status: str  # "resolved" | "default_no_match" | "null_default" | "unresolved"
-    raw_source_value: object = field(default=None)
-
-
-def _normalize_lookup_key(value) -> str | None:
-    if _is_missing(value):
-        return None
-    value = _to_native(value)
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-    if isinstance(value, str):
-        text = value.strip()
-        if re.fullmatch(r"-?\d+\.0+", text):
-            return text.split(".")[0]
-        return text
-    return str(value)
-
 
 def resolve_typology(id_tipo, typology_lookup: dict, default_no_match: str) -> LookupResult:
     """IDTipo -> CS_Typology. Confirmado con fórmula real (2-step XLOOKUP,
@@ -196,34 +163,6 @@ def resolve_typology(id_tipo, typology_lookup: dict, default_no_match: str) -> L
     if key is not None and key in lookup:
         return LookupResult(value=lookup[key], status="resolved", raw_source_value=id_tipo)
     return LookupResult(value=default_no_match, status="default_no_match", raw_source_value=id_tipo)
-
-
-def resolve_letter(id_letra, letter_lookup: dict, null_default: str) -> LookupResult:
-    """IDLetra -> CS_Letter. `null_default` ("NOLETTER-WRONG") es el
-    literal EXACTO del `nullcontrol` de la hoja `Mapeo_Letra` -- se aplica
-    solo cuando IDLetra está vacío. Un IDLetra presente pero sin
-    coincidencia en la tabla queda `unresolved` -- no se le aplica el
-    default de NULL (son casos distintos, no se mezclan)."""
-    if _is_missing(id_letra):
-        return LookupResult(value=null_default, status="null_default", raw_source_value=id_letra)
-    key = _normalize_lookup_key(id_letra)
-    lookup = {str(k): v for k, v in letter_lookup.items()}
-    if key in lookup:
-        return LookupResult(value=lookup[key], status="resolved", raw_source_value=id_letra)
-    return LookupResult(value=None, status="unresolved", raw_source_value=id_letra)
-
-
-def resolve_workflow_status(estado, workflow_status_lookup: dict) -> LookupResult:
-    """Estado -> CS_WorkflowStatus. Tabla estática confirmada de 4 valores
-    (`etl_transform:simulacros.mapeoestado.workflow_status_lookup`). Sin
-    default confirmado para un Estado no listado -- no se inventa uno: se
-    reporta `unresolved` y se conserva el valor origen para auditoría."""
-    if _is_missing(estado):
-        return LookupResult(value=None, status="unresolved", raw_source_value=estado)
-    key = str(estado).strip()
-    if key in workflow_status_lookup:
-        return LookupResult(value=workflow_status_lookup[key], status="resolved", raw_source_value=estado)
-    return LookupResult(value=None, status="unresolved", raw_source_value=estado)
 
 
 # --------------------------------------------------------------------------

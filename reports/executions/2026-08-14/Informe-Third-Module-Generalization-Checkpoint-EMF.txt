@@ -1,0 +1,212 @@
+INFORME - SPRINT 9.8: THIRD-MODULE GENERALIZATION CHECKPOINT
+================================================================================
+
+Fecha: 2026-08-14
+Objetivo: generalizar SOLO lo ya demostrado por 3 modulos reales (Drills,
+Bypass, Safety Meetings) -- no construir un cuarto modulo.
+
+Documentacion completa (matrices, evidencia linea a linea):
+reports/executions/2026-08-14/Informe-Third-Module-Generalization-Checkpoint-EMF.md
+
+Baseline: 836 passed, 7 skipped (commits e5f8a91/f24f5fd/26724fb presentes,
+ahead 3 de origin, sin push inesperado).
+Final: 844 passed, 7 skipped (+8 tests nuevos). Cero regresiones. Cero
+cambios en src/core/. Cero SQL ejecutado. Cero push.
+
+--------------------------------------------------------------------------------
+FASE 0 - PREFLIGHT
+--------------------------------------------------------------------------------
+
+Confirmados: log de commits, ahead 3, git diff --check limpio,
+.claude/settings.local.json fuera de alcance, sin workspace/outputs/datos
+reales versionados. 6 informes sueltos de Sprints 9.5/9.5.1, ya untracked
+antes de este sprint, no tocados (no son de Sprint 9.8).
+
+--------------------------------------------------------------------------------
+FASE 1/2 - HELPERS: INVENTARIO Y EXTRACCION
+--------------------------------------------------------------------------------
+
+Hallazgo previo: NO habia duplicacion de codigo en to_historical_id /
+resolve_letter / resolve_workflow_status / LookupResult -- Bypass y Safety
+Meetings ya los IMPORTABAN de drills.transformations (nunca los copiaron).
+El problema real era acoplamiento modulo-a-modulo, no duplicacion textual.
+
+PROVEN_GENERIC (extraidos a src/export/engine/):
+- identifiers.py: to_historical_id
+- lookups.py: LookupResult, normalize_lookup_key, resolve_letter,
+  resolve_workflow_status
+
+MODULE_SPECIFIC (permanece en drills/transformations.py):
+- resolve_typology: un solo uso real (Drills), sin 2a/3a confirmacion.
+
+Los 3 modulos siguen accediendo via su propio namespace (tr.to_historical_id,
+etc.) -- ningun pipeline.py necesito cambios en sus llamadas.
+
+--------------------------------------------------------------------------------
+FASE 3 - DETERMINE_STATUS: DRILLS VS BYPASS VS SAFETY MEETINGS
+--------------------------------------------------------------------------------
+
+Drills y Safety Meetings: 3 estados (engine.manifest.determine_status).
+Bypass: 2 estados, calculo inline propio que IGNORA stats.warnings aunque
+SI los genera (1 warning por lookup "presente sin coincidencia", de sus 4
+lookups). Evidencia real (sample Sprint 9.5, run e7617f04710e, 10 filas):
+0 warnings -- migrar no habria cambiado ESE resultado, pero es muestra
+pequena.
+
+CONCLUSION: caso A (diferencia accidental, no politica deliberada) -- no
+hay motivo de negocio documentado para tratar el caso distinto. NO
+migrado en este sprint (altera un output observable, instruccion
+explicita de no migrar solo por conteo 2-de-3). Cambio propuesto,
+disenado, no aplicado: 1 linea en bypass/manifest.py. Recomendado como
+commit propio y visible en un sprint futuro.
+
+--------------------------------------------------------------------------------
+FASE 4 - ENTITY RESOLUTION: TERCERA CONFIRMACION
+--------------------------------------------------------------------------------
+
+CS_Entity unresolved en Bypass y Safety Meetings = MISMO gap sistemico,
+confirmado via src/query/catalog.py (misma nota en ambos catalogos de
+filtro) y verificado contra los ficheros reales de inputs/entity_catalog/
+(First_Axis_export_bruto.csv, catalogo_resuelto_code_ruta_site.csv):
+ninguno tiene columna IDUnidadOrg.
+
+Lo que SI existe: drills/mappings.py (EntityCatalog/resolve_entity) ya es
+100% generico en su codigo (parametrizado por columnas), pero usa el
+catalogo ANTIGUO especifico de Simulacros (si tiene IDUnidadOrg directo).
+
+RESPUESTA: el Engine YA podria alojar este resolver si tuvieramos el
+catalogo correcto -- el gap es de ARTEFACTO DE DATOS (falta el crosswalk
+IDUnidadOrg->Code para los sistemas ITP/GCT de Bypass/SM), no de
+arquitectura. No se mueve mappings.py al Engine (un solo uso real,
+mismo criterio que resolve_typology). No se implementa resolucion
+inferida.
+
+--------------------------------------------------------------------------------
+FASE 5 - PIPELINE.PY: DISENO, NO IMPLEMENTACION
+--------------------------------------------------------------------------------
+
+Matriz completa en el .md. Resumen: request/context, query/extraccion,
+escritura CSV, validacion, output paths y manejo de errores ya son
+PROVEN_GENERIC (varios ya en el Engine desde 9.6/9.8). _transform_rows es
+el corazon real MODULE_SPECIFIC (220/60/50 lineas Drills/Bypass/SM).
+manifest y status son HOOK_REQUIRED (esqueleto comun + secciones/politica
+inyectadas). Comparison y Evidence quedan INSUFFICIENT_EVIDENCE (ver
+Fase 7/8).
+
+Diseno conceptual (pseudofirma, NO implementada): ExportPipeline por
+composicion de callables (extract/transform_rows/write_csv/validate/
+build_manifest/determine_status/hooks), NO una clase base grande --
+evidencia de 3 modulos favorece composicion sobre herencia.
+
+--------------------------------------------------------------------------------
+FASE 6 - CSV WRITER
+--------------------------------------------------------------------------------
+
+drills/exporter.py::write_csv = PROVEN_GENERIC, pequeno (73 lineas), cero
+logica de Drills. EXTRAIDO a src/export/engine/writer.py. drills/exporter.py
+queda como shim de re-export (mismo patron que _is_missing/_to_native en
+9.6). Sin diferencias reales de delimiter/encoding/BOM/quoting entre los
+3 modulos.
+
+--------------------------------------------------------------------------------
+FASE 7 - COMPARISON
+--------------------------------------------------------------------------------
+
+Drills: comparison.py completo. Bypass: comparacion MANUAL (Sprint 9.5,
+sin codigo). Safety Meetings: Operational identificado, sin comparar.
+CONCLUSION: INSUFFICIENT_EVIDENCE -- solo 1 implementacion de codigo real,
+no se puede clasificar A/B/C/D con confianza. Recomendado: escribir una
+2a implementacion real (Bypass) antes de diseñar la interfaz generica.
+
+--------------------------------------------------------------------------------
+FASE 8 - EVIDENCE
+--------------------------------------------------------------------------------
+
+Confirmado: sigue hardcoded a Drills (DEFAULT_RUNS_ROOT, "drills",
+"drills.csv", titulos de hoja literales). Separacion GENERIC ENGINE
+(localizar ejecucion, leer artefactos, construir workbook) vs
+MODULE-SPECIFIC CONTENT (catalogo de categorias, nombre de CSV, migration
+object) ya es visible con 3 modulos reales -- no refactorizado en este
+sprint (instruccion explicita).
+
+--------------------------------------------------------------------------------
+FASE 9 - FIELD CONSTRAINTS: CANDIDATOS (SIN IMPLEMENTAR)
+--------------------------------------------------------------------------------
+
+Bypass: AutorizaOPoneEnServicioFase2/3/4 (allowed_values A/S + condicional,
+no solo max_length); GOS (system_managed, campo calculado por plataforma).
+Safety Meetings: TitleEN/Parametro=239 (posible max_length, NO confirmado).
+Drills: sin candidato encontrado. El caso hipotetico "Title max 20" del
+encargo no tiene todavia ejemplo real confirmado en ningun modulo. Se
+confirma que el esquema necesitara mas que max_length/overflow_policy.
+
+--------------------------------------------------------------------------------
+FASE 10 - MULTI-OBJECT
+--------------------------------------------------------------------------------
+
+ModuleSpec hoy: 1 target_object, 1 artifact por kind -- bloquea a Safety
+Meetings (Group_Meetings + Update_External_Meeting_Participations). MOC
+tiene un gap de FORMA DISTINTA (traduccion de IDCentro entre sistemas, no
+artefactos por objeto). Events/Inspections: pendientes de su propia
+auditoria, no se asume que compartan la forma de Safety Meetings.
+
+Modelo minimo propuesto (diseno, NO implementado): objects: Mapping[str,
+ObjectSpec] opcional dentro de ModuleSpec, sin romper el esquema actual de
+modulos single-object (Drills, Bypass siguen igual sin declarar objects).
+
+--------------------------------------------------------------------------------
+FASE 11 - TESTS
+--------------------------------------------------------------------------------
+
+8 tests nuevos en tests/test_export_engine.py: 5 de comportamiento directo
+(identifiers/lookups/writer), 1 de identidad cruzada (confirma por "is",
+no solo comportamiento, que Drills/Bypass/Safety Meetings comparten el
+MISMO objeto funcion), 2 arquitectonicos actualizados/nuevos (bypass y
+safety_meetings ya no importan NADA de drills). Los tests arquitectonicos
+ya existentes recogen los 3 ficheros nuevos por glob automaticamente.
+Ningun test existente necesito modificarse.
+
+RESULTADO: 836 -> 844 passed, 7 skipped, cero regresiones.
+
+--------------------------------------------------------------------------------
+FASE 12 - METRICA POST-9.8
+--------------------------------------------------------------------------------
+
+Subtotal modulos (transformations.py x3 + exporter.py): 461 -> 339 lineas
+(-26,5%). Engine nuevo (identifiers+lookups+writer): +213 lineas. Total
+neto: 461 -> 552 lineas (+19,7%) -- SUBE, no baja. Lectura honesta: la
+ganancia no es "menos codigo total", es eliminar el acoplamiento
+modulo-a-modulo (confirmado por los 2 tests arquitectonicos) y reducir
+-26,5% lo que cada modulo mantiene por su cuenta. El incremento neto es
+casi todo docstring de evidencia (convencion ya establecida del proyecto).
+Duplicacion relevante restante: 0 textual en helpers; estructural en la
+forma de run() entre Bypass/Safety Meetings (disenada en Fase 5, no
+implementada).
+
+--------------------------------------------------------------------------------
+FASE 13 - DECISION DEL SIGUIENTE SPRINT
+--------------------------------------------------------------------------------
+
+Evaluadas A/B/C/D/E/F. RECOMENDACION PRINCIPAL: A - Safety Meetings first
+real sample (confirma la hipotesis inicial, con evidencia: unica opcion
+sin decision de diseno pendiente, modulo ya READY desde 9.7, da 3er punto
+de datos real para Fase 3/7). B/C/F necesitan mas puntos de datos reales
+antes de generalizar (riesgo de sobregeneralizar sobre Drills). D esta
+bloqueado por un artefacto de datos ausente, no por ingenieria. E
+acumularia mas superficie sin validar los 3 modulos ya construidos.
+
+--------------------------------------------------------------------------------
+CONFIRMACIONES FINALES
+--------------------------------------------------------------------------------
+
+- No SQL real ejecutado.
+- No modo full.
+- No multi-object implementado (solo disenado).
+- No Evidence generica implementada (solo analizada).
+- No Field Constraints implementados (solo candidatos registrados).
+- No se toco DataWorkspace/runs.
+- No se tocaron Action Plans.
+- No push.
+- No cambios en src/core/.
+- No workspace real, outputs reales, datos de cliente ni secretos
+  versionados en los cambios de este sprint.

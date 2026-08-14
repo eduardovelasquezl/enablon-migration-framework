@@ -1,11 +1,9 @@
 """Transformaciones de campo para safety_meetings.Group_Meetings (Sprint 9.7).
 
-Reutiliza deliberadamente, sin copiar, dos funciones de
-`src.export.prototype.drills.transformations` que resultaron ser genéricas
-pese a su nombre -- mismo criterio ya aplicado por Bypass (Sprint 9.4):
+Reutiliza deliberadamente dos funciones genéricas del Export Engine:
 
 - `to_historical_id`: limpieza de un ID numérico a texto. Cero lógica de
-  Drills.
+  ningún módulo concreto.
 - `resolve_workflow_status`: `IDValor -> lookup`, SIN default para
   ausencia/no-coincidencia (siempre `unresolved`, nunca inventa un valor).
   Es la semántica correcta para los 3 lookups de Safety Meetings
@@ -19,27 +17,24 @@ pese a su nombre -- mismo criterio ya aplicado por Bypass (Sprint 9.4):
   verificado leyendo su implementación antes de reutilizarla para
   `CS_Level`/`CS_Letter` también.
 
-Esta es la TERCERA vez que un módulo nuevo necesita `to_historical_id`
-(Drills, Bypass, ahora Safety Meetings) y ambas funciones de lookup del
-mismo fichero (`resolve_letter`/`resolve_workflow_status`, la segunda ahora
-reutilizada 3 veces solo en este módulo) -- evidencia relevante para
-Sprint 9.8 (ver informe de cierre de Sprint 9.7 § Fase 17): mover
-`LookupResult`/`to_historical_id`/`resolve_workflow_status` a
-`src.export.engine` ya cruza el umbral de evidencia que Sprint 9.6 fijó
-para `_is_missing` ("esperar una 3ª necesidad real antes de mover
-código") -- no se mueve en este sprint (fuera de alcance, ver Fase 7).
+Hasta Sprint 9.8, ambas funciones se importaban de
+`src.export.prototype.drills.transformations` -- esta fue la TERCERA vez
+que un módulo nuevo las necesitaba (Drills, Bypass, ahora Safety
+Meetings), lo que cruzó el umbral de evidencia que Sprint 9.6 fijó para
+`_is_missing` ("esperar una 3ª necesidad real antes de mover código").
+Sprint 9.8 movió `LookupResult`/`to_historical_id`/
+`resolve_workflow_status`/`resolve_letter` a
+`src.export.engine.identifiers`/`src.export.engine.lookups`; Safety
+Meetings ya no importa nada de `drills` para utilidades genéricas.
 
 `passthrough_or_empty` es nueva -- ningún campo de Drills/Bypass usa
 exactamente este patrón (sin lookup, sin nullcontrol documentado, solo
 "si está vacío, cadena vacía; si no, tal cual")."""
 from __future__ import annotations
 
+from src.export.engine.identifiers import to_historical_id
+from src.export.engine.lookups import LookupResult, resolve_workflow_status as resolve_lookup
 from src.export.engine.values import is_missing
-from src.export.prototype.drills.transformations import (
-    LookupResult,
-    resolve_workflow_status as resolve_lookup,
-    to_historical_id,
-)
 
 __all__ = ["LookupResult", "resolve_lookup", "to_historical_id", "passthrough_or_empty"]
 

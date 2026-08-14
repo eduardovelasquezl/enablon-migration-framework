@@ -146,3 +146,53 @@ DRILLS_FILTER_CATALOG = ObjectFilterCatalog(
         ),
     },
 )
+
+
+# Catálogo de Bypass (Sprint 9.4, segundo módulo real) -- mismo mecanismo
+# genérico que DRILLS_FILTER_CATALOG (ObjectFilterCatalog/FilterDefinition,
+# REUSED_AS_IS), datos propios de Bypass. Columnas confirmadas por tipo
+# en `sql/source_queries/bypass/SQLQuery-dataset_BES.sql` (sin JOINs
+# necesarios para estos cuatro campos -- todos vienen directos de
+# `ITP_BES`, ver docs/07-developer-guide/bypass-module.md § 2).
+BYPASS_FILTER_CATALOG = ObjectFilterCatalog(
+    object_id="bypass",
+    fields={
+        "historical_origin_id": FilterDefinition(
+            field_name="historical_origin_id",
+            sql_source_expression="[ITP_BES].[IDBES]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description="Identificador histórico de origen del bypass (IDBES).",
+        ),
+        "center_id": FilterDefinition(
+            field_name="center_id",
+            sql_source_expression="[ITP_BES].[IDCentro]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description=(
+                "IDCentro tal cual está en el sistema ITP/Prevención "
+                "(idcentro_map_itp) -- nunca cruzar contra idcentro_map_gct."
+            ),
+        ),
+        "origin_org_unit_id": FilterDefinition(
+            field_name="origin_org_unit_id",
+            sql_source_expression="[ITP_BES].[IDUnidadOrg]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description=(
+                "Unidad organizativa de origen (IDUnidadOrg) -- clave de entrada al "
+                "catálogo de entidad First_Axis vigente; a diferencia de Drills, este "
+                "repositorio NO tiene hoy un artefacto local IDUnidadOrg->Code para "
+                "ese catálogo (ver excluded_columns de config/exports/bypass.yaml), "
+                "así que este filtro no puede acotarse todavía a una entidad conocida."
+            ),
+        ),
+        "bypass_type_id": FilterDefinition(
+            field_name="bypass_type_id",
+            sql_source_expression="[ITP_BES].[IDTipoBypass]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description="Valor de ORIGEN de categoría de bypass (IDTipoBypass) -- no el valor Enablon ByPassType ya traducido.",
+        ),
+    },
+)

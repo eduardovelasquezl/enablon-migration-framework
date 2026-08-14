@@ -1,16 +1,19 @@
-"""Composition root del Module Registry (Sprint 8.6).
+"""Composition root del Module Registry (Sprint 8.6; segundo módulo real
+-- Bypass -- añadido en Sprint 9.4).
 
 Único lugar central del repositorio que importa un módulo funcional
-concreto (Drills) para registrarlo en el `ModuleRegistry` genérico del
-Core. `src/core/module_registry.py` no importa nada de aquí -- es este
-fichero quien importa de ambos lados (Core y Drills) y los conecta, mismo
-patrón de dirección de dependencia ya establecido por
-`src/export/prototype/drills/core_adapters.py` para `StageRegistry` (ver
+concreto (Drills, Bypass) para registrarlo en el `ModuleRegistry`
+genérico del Core. `src/core/module_registry.py` no importa nada de
+aquí -- es este fichero quien importa de ambos lados (Core y cada
+módulo) y los conecta, mismo patrón de dirección de dependencia ya
+establecido por `src/export/prototype/drills/core_adapters.py` /
+`src/export/prototype/bypass/core_adapters.py` para `StageRegistry` (ver
 `docs/01-architecture/architecture-overview.md` § 1).
 
-Cuando exista un segundo módulo migrable real con pipeline ejecutable,
-su registro se añade aquí junto al de Drills -- nunca dentro de
-`src/core/`.
+Bypass demuestra en la práctica que este patrón se replica sin tocar
+`src/core/` -- ver docs/07-developer-guide/bypass-module.md § 3/6.
+Cuando exista un tercer módulo migrable real, su registro se añade aquí
+junto a los dos anteriores -- nunca dentro de `src/core/`.
 """
 from __future__ import annotations
 
@@ -23,6 +26,12 @@ from src.core.module_registry import (
     ModuleRegistry,
 )
 from src.core.registry import StageRegistry
+from src.export.prototype.bypass.core_adapters import (
+    OBJECT_TYPE as BYPASS_OBJECT_TYPE,
+    build_bypass_pipeline_definition,
+    build_execution_context as build_bypass_execution_context,
+    register_bypass_stages,
+)
 from src.export.prototype.drills.core_adapters import (
     OBJECT_TYPE as DRILLS_OBJECT_TYPE,
     build_drills_pipeline_definition,
@@ -100,15 +109,80 @@ def _build_drills_definition() -> ModuleDefinition:
     )
 
 
+def _bypass_pipeline_factory(
+    request: ExecutionRequest, registry: StageRegistry,
+) -> tuple[PipelineDefinition, ExecutionContext]:
+    """Mismo patrón que `_drills_pipeline_factory` -- Sprint 9.4 confirma
+    que se replica sin cambios de Core."""
+    register_bypass_stages(registry)
+    definition = build_bypass_pipeline_definition()
+    context = build_bypass_execution_context(request)
+    return definition, context
+
+
+def _build_bypass_definition() -> ModuleDefinition:
+    return ModuleDefinition(
+        module_id=BYPASS_OBJECT_TYPE,
+        canonical_name="By_Passes",
+        display_name="Bypass de Funciones y Elementos de Seguridad (BES)",
+        version="0.1.0",
+        status=ModuleImplementationStatus.EXPERIMENTAL,
+        # 'experimental', no 'implemented': mismo motivo que Drills --
+        # config/exports/bypass.yaml declara prototype_status=review_only,
+        # y este incremento (Sprint 9.4) se detiene deliberadamente en
+        # BYPASS_OFFLINE_SAMPLE_READY, sin sample real ejecutado todavía.
+        capabilities=ModuleCapabilities(frozenset({
+            ModuleCapability.EXPORT,
+            ModuleCapability.SAMPLE,
+            ModuleCapability.FULL,
+            ModuleCapability.VALIDATION,
+            ModuleCapability.MANIFEST_DRIVEN_RESOURCES,
+            ModuleCapability.MAPPING,
+            # NO 'evidence': no implementada para Bypass en Sprint 9.4
+            # (no era necesaria para BYPASS_OFFLINE_SAMPLE_READY) --
+            # declararla sería falsear una capacidad no demostrada.
+            # NO 'comparison': el Project Contract real (Operational)
+            # tiene una anomalía de datos confirmada en
+            # CS_HistoricalOriginID (Sprint 9.4) que bloquea una
+            # comparación automática fiable hoy -- ver
+            # docs/07-developer-guide/bypass-module.md § 7.
+            # NO 'legacy_cli': no existe un 'export bypass' heredado
+            # (a diferencia de 'export drills') -- solo el camino
+            # genérico 'run' aplica a Bypass desde el principio.
+            # NO 'import': igual que Drills, este repositorio no ejecuta
+            # cargas contra Enablon.
+        })),
+        aliases=frozenset(),
+        pipeline_factory=_bypass_pipeline_factory,
+        supported_modes=frozenset({"sample", "full"}),
+        required_artifact_types=frozenset({"sql", "mapping"}),
+        optional_artifact_types=frozenset({"operational_csv", "etl", "errors"}),
+        description=(
+            "Bypass de Funciones y Elementos de Seguridad -- prototipo de "
+            "exportación review_only (7 de 43 columnas del Operational real, "
+            "ver config/exports/bypass.yaml). Segundo módulo con pipeline "
+            "ejecutable del EMF (Sprint 9.4), detenido en "
+            "BYPASS_OFFLINE_SAMPLE_READY -- sin sample real ejecutado todavía."
+        ),
+        metadata={
+            "source_system": "prevencion",
+            "prototype_status": "review_only",
+            "object_id": BYPASS_OBJECT_TYPE,
+        },
+    )
+
+
 def build_default_module_registry() -> ModuleRegistry:
-    """Registro por defecto del EMF: hoy, únicamente Drills. Los 7 módulos
-    restantes del Workspace Manifest de ejemplo (`safety_meetings`, `moc`,
-    `bypass`, `events`, `ops`, `inspections`, `corrective_actions`) NO se
+    """Registro por defecto del EMF: Drills (Sprint 8.6) y Bypass (Sprint
+    9.4) -- los dos únicos módulos con `pipeline_factory` real. Los 6
+    restantes del Workspace Manifest de ejemplo (`safety_meetings`,
+    `moc`, `events`, `ops`, `inspections`, `corrective_actions`) NO se
     registran aquí todavía -- ninguno tiene un `pipeline_factory` real
-    (Fase 9 del encargo: "no confundir presencia en el proyecto con
-    soporte del software"). Su presencia en
+    (Fase 9 del encargo original de Drills: "no confundir presencia en
+    el proyecto con soporte del software"). Su presencia en
     `examples/workspace/workspace.example.yaml` (status=planned) describe
     el ROADMAP del proyecto, no lo que el software sabe ejecutar hoy."""
     registry = ModuleRegistry()
     registry.register(_build_drills_definition())
+    registry.register(_build_bypass_definition())
     return registry

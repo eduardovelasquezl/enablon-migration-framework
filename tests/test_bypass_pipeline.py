@@ -138,7 +138,10 @@ def test_pipeline_completo_produce_columnas_esperadas(tmp_path):
         run_id="test_pipeline", timestamp="20260101T000000Z",
     )
     assert result.csv_path.is_file()
-    header = result.csv_path.read_text(encoding="utf-8").splitlines()[0]
+    # utf-8-sig: el Output Contract corregido en Micro-sprint 9.9.1 escribe
+    # BOM UTF-8 (config/exports/bypass.yaml -> output.bom: true) -- leer con
+    # "utf-8" a secas dejaría U+FEFF colgando del primer valor de cabecera.
+    header = result.csv_path.read_text(encoding="utf-8-sig").splitlines()[0]
     assert header.split("\t") == pipeline_mod.OUTPUT_COLUMNS
 
     report = yaml.safe_load(result.validation_report_path.read_text(encoding="utf-8"))

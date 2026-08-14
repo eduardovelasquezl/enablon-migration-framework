@@ -53,7 +53,7 @@ from src.export.engine.lookups import LookupResult, normalize_lookup_key, resolv
 from src.export.engine.query_stage import GenericQueryStage, QueryStageSpec
 from src.export.engine.validator import validate_csv_structure
 from src.export.engine.values import is_missing, to_native
-from src.export.engine.writer import write_csv
+from src.export.engine.writer import resolve_text_encoding, write_csv
 from src.query.catalog import DRILLS_FILTER_CATALOG
 
 
@@ -616,3 +616,140 @@ def test_drills_bypass_y_safety_meetings_comparten_la_misma_funcion_no_una_copia
     assert drills_write_csv is write_csv
     assert bypass_write_csv is write_csv
     assert sm_write_csv is write_csv
+
+
+# ---------------------------------------------------------------------------
+# Output Contract -- encoding/BOM/quoting/delimiter (Micro-sprint 9.9.1)
+#
+# Datos 100% sintéticos -- ningún valor real de cliente. "Prevención.ITP_BES"
+# se usa aquí como caso de prueba porque reproduce EXACTAMENTE el patrón del
+# mojibake real reportado (acento propagado a mojibake por falta de BOM), no
+# porque sea un valor de cliente -- es un literal ya público en
+# config/exports/bypass.yaml (CS_HistoricalDataOrigin, `default`).
+# ---------------------------------------------------------------------------
+
+def _contract_output_spec(**overrides) -> OutputSpec:
+    base = dict(
+        filename="out.csv", encoding="utf-8", bom=True, delimiter="\t",
+        quoting="minimal", line_terminator="\r\n", include_header=True,
+    )
+    base.update(overrides)
+    return OutputSpec(**base)
+
+
+def test_resolve_text_encoding_bom_true_utf8_usa_sig():
+    assert resolve_text_encoding(_contract_output_spec(bom=True, encoding="utf-8")) == "utf-8-sig"
+
+
+def test_resolve_text_encoding_bom_false_usa_encoding_declarado_sin_modificar():
+    assert resolve_text_encoding(_contract_output_spec(bom=False, encoding="utf-8")) == "utf-8"
+
+
+def test_resolve_text_encoding_bom_true_pero_encoding_no_utf8_no_se_toca():
+    """`-sig` es un mecanismo específico de la familia UTF-8 -- para
+    cualquier otro encoding (p. ej. un futuro módulo con Latin-1),
+    `resolve_text_encoding` no debe inventar un comportamiento."""
+    assert resolve_text_encoding(_contract_output_spec(bom=True, encoding="latin-1")) == "latin-1"
+
+
+def test_write_csv_con_bom_true_produce_bytes_bom_utf8(tmp_path):
+    spec = _contract_output_spec(bom=True)
+    out = write_csv([{"A": "1"}], ["A"], tmp_path / "out.csv", spec)
+    raw = out.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+
+
+def test_write_csv_sin_bom_no_produce_bytes_bom(tmp_path):
+    spec = _contract_output_spec(bom=False)
+    out = write_csv([{"A": "1"}], ["A"], tmp_path / "out.csv", spec)
+    raw = out.read_bytes()
+    assert not raw.startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.parametrize("valor", [
+    "Prevención.ITP_BES",  # acento -- el caso real reportado
+    "Servicio Prevención LA RÁBIDA",  # ñpicos/tildes adicionales, ver CLAUDE.md
+    "año, ñoño, José",  # ñ explícita, varias posiciones
+    "维护会议",  # CJK -- NameZH del fan-out cloneorigin (CLAUDE.md), imposible en Latin-1
+    "Café — SGA/Niño",  # em-dash + ñ combinados
+])
+def test_write_csv_preserva_unicode_bajo_el_contrato_corregido(tmp_path, valor):
+    """Round-trip completo escritura+lectura bajo el Output Contract
+    corregido (bom=True) -- ningún carácter se pierde ni se corrompe. La
+    causa del mojibake real NO era una escritura incorrecta (ver Fase 1 del
+    informe: bytes UTF-8 ya correctos) -- este test demuestra que sigue
+    siéndolo, con BOM añadido para que un lector sin autodetección de UTF-8
+    (Excel en Windows) no lo confunda con Latin-1/Windows-1252."""
+    spec = _contract_output_spec(bom=True)
+    out = write_csv([{"Valor": valor}], ["Valor"], tmp_path / "out.csv", spec)
+    encoding = resolve_text_encoding(spec)
+    text = out.read_text(encoding=encoding)
+    row = text.splitlines()[1]
+    assert valor in row
+
+
+def test_write_csv_delimitador_dentro_de_un_valor_queda_citado(tmp_path):
+    spec = _contract_output_spec(quoting="minimal")
+    out = write_csv([{"Valor": "A\tB"}], ["Valor"], tmp_path / "out.csv", spec)
+    text = out.read_text(encoding=resolve_text_encoding(spec))
+    assert '"A\tB"' in text
+
+
+def test_write_csv_comillas_dentro_de_un_valor_se_escapan_doblando(tmp_path):
+    spec = _contract_output_spec(quoting="minimal")
+    out = write_csv([{"Valor": 'dice "hola"'}], ["Valor"], tmp_path / "out.csv", spec)
+    text = out.read_text(encoding=resolve_text_encoding(spec))
+    assert '"dice ""hola"""' in text
+
+
+def test_write_csv_valor_vacio_se_representa_como_cadena_vacia_no_null(tmp_path):
+    spec = _contract_output_spec()
+    out = write_csv([{"A": "", "B": "x"}], ["A", "B"], tmp_path / "out.csv", spec)
+    text = out.read_text(encoding=resolve_text_encoding(spec))
+    data_row = text.splitlines()[1]
+    assert data_row.startswith("\tx") or data_row.startswith('""\tx')
+    assert "None" not in text and "NULL" not in text.upper().replace("NULLCONTROL", "")
+
+
+def test_write_csv_line_endings_son_crlf(tmp_path):
+    spec = _contract_output_spec(line_terminator="\r\n")
+    out = write_csv([{"A": "1"}, {"A": "2"}], ["A"], tmp_path / "out.csv", spec)
+    raw = out.read_bytes()
+    assert b"\r\n" in raw
+    assert raw.count(b"\r\n") == 3  # cabecera + 2 filas, cada una con su propio terminador
+
+
+def test_validate_csv_structure_con_bom_no_deja_ufeff_colgando(tmp_path):
+    """Confirma el hallazgo de la Fase 3 del micro-sprint: antes de este
+    fix, `validate_csv_structure` decodificaba con `output_spec.encoding` a
+    secas -- con bom=True dejaba U+FEFF en el primer valor de cabecera y
+    esta comprobación habría fallado."""
+    spec = _contract_output_spec(bom=True)
+    out = write_csv([{"A": "1", "B": "2"}], ["A", "B"], tmp_path / "out.csv", spec)
+    result = validate_csv_structure(out, ["A", "B"], spec)
+    assert result.is_valid, result.issues
+    assert result.columns == ["A", "B"]
+    assert not result.columns[0].startswith("﻿")
+
+
+def test_los_tres_modulos_declaran_el_mismo_output_contract():
+    """Confirma que la corrección del Output Contract se aplicó como UNA
+    decisión compartida, no tres correcciones independientes que podrían
+    haber divergido -- los 3 YAML declaran exactamente los mismos
+    encoding/bom/delimiter/quoting/line_terminator."""
+    from src.export.prototype.bypass.config import load_bypass_config
+    from src.export.prototype.drills.config import load_drills_config
+    from src.export.prototype.safety_meetings.config import load_safety_meetings_config
+
+    drills_out = load_drills_config().output
+    bypass_out = load_bypass_config().output
+    sm_out = load_safety_meetings_config().output
+
+    for other in (bypass_out, sm_out):
+        assert other.encoding == drills_out.encoding
+        assert other.bom == drills_out.bom
+        assert other.delimiter == drills_out.delimiter
+        assert other.quoting == drills_out.quoting
+        assert other.line_terminator == drills_out.line_terminator
+
+    assert drills_out.bom is True  # el contrato corregido -- ver Informe-Micro-Sprint-9.9.1

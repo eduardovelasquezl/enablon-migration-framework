@@ -14,7 +14,19 @@ Tercera confirmación real de que esta función no tiene ninguna lógica de
 Drills -- mismo criterio que `identifiers.py`/`lookups.py` en este mismo
 sprint: se corrige el acoplamiento módulo-a-módulo (Bypass/Safety Meetings
 dependían de `drills.exporter`), no se elimina duplicación de código (no
-la había, ya era import directo)."""
+la había, ya era import directo).
+
+`resolve_text_encoding` (Micro-sprint 9.9.1): extraída de la lógica que
+antes vivía solo, inline, dentro de `write_csv` -- `engine/validator.py::
+validate_csv_structure` decodificaba el CSV ya escrito con
+`output_spec.encoding` a secas, ignorando `output_spec.bom`. Mientras
+`bom=false` (valor de los 3 módulos hasta este micro-sprint) esto no tenía
+efecto observable; en cuanto un módulo declara `bom=true`, decodificar sin
+`-sig` deja el carácter `U+FEFF` colgando del primer valor de cabecera y
+rompe la comparación `header != expected_columns` -- hallazgo propio de este
+micro-sprint (Fase 3, "revisar todos los callers"), no una corrección de
+otro sprint. Un único punto de resolución evita que `write_csv` y
+`validate_csv_structure` puedan volver a divergir."""
 from __future__ import annotations
 
 import csv
@@ -30,6 +42,19 @@ _QUOTING_MAP = {
     "nonnumeric": csv.QUOTE_NONNUMERIC,
     "none": csv.QUOTE_NONE,
 }
+
+
+def resolve_text_encoding(output_spec: OutputSpec) -> str:
+    """Encoding real a usar para ESCRIBIR o DECODIFICAR el CSV -- añade el
+    sufijo `-sig` (único caso en el que Python antepone/retira un BOM UTF-8
+    de forma transparente) cuando `output_spec.bom=True` y el encoding
+    declarado es de la familia UTF-8. Para cualquier otro encoding
+    (`bom=False`, o un futuro encoding no-UTF-8), devuelve
+    `output_spec.encoding` sin modificar."""
+    encoding = output_spec.encoding
+    if output_spec.bom and encoding.lower() in ("utf-8", "utf8"):
+        return "utf-8-sig"
+    return encoding
 
 
 def write_csv(
@@ -50,10 +75,7 @@ def write_csv(
         )
 
     quoting = _QUOTING_MAP.get(output_spec.quoting, csv.QUOTE_MINIMAL)
-
-    encoding = output_spec.encoding
-    if output_spec.bom and encoding.lower() in ("utf-8", "utf8"):
-        encoding = "utf-8-sig"  # único caso en el que Python añade BOM automáticamente en texto UTF-8.
+    encoding = resolve_text_encoding(output_spec)
 
     fd, tmp_name = tempfile.mkstemp(
         prefix=f".{output_path.name}.", suffix=".tmp", dir=str(output_path.parent)

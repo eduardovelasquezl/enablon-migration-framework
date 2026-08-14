@@ -99,7 +99,10 @@ def test_pipeline_completo_via_core_sin_sql_real(tmp_path):
 
     csv_path = context.output_dir / "drills.csv"
     assert csv_path.is_file()
-    header = csv_path.read_text(encoding="utf-8").splitlines()[0].split("\t")
+    # utf-8-sig: el Output Contract corregido en Micro-sprint 9.9.1 escribe
+    # BOM UTF-8 (config/exports/drills.yaml -> output.bom: true) -- leer con
+    # "utf-8" a secas dejaría U+FEFF colgando del primer valor de cabecera.
+    header = csv_path.read_text(encoding="utf-8-sig").splitlines()[0].split("\t")
     assert header == OUTPUT_COLUMNS
 
     assert (context.output_dir / "validation_report.yaml").is_file()

@@ -46,7 +46,7 @@ source:
 output:
   filename: drills.csv
   encoding: utf-8
-  bom: false  # ver nota en exporter.py: sin evidencia de que Enablon exija BOM: se documenta como decisión provisional.
+  bom: true  # CORREGIDO Micro-sprint 9.9.1 (antes: false, "decisión provisional" sin evidencia). Causa confirmada del mojibake reportado ("PrevenciÃ³n" en vez de "Prevención" en CS_HistoricalDataOrigin de Bypass): bytes UTF-8 YA correctos (verificado byte a byte), mal interpretados al abrir sin BOM en herramientas Windows -- Causa B, no un bug de escritura. Ningún CSV real de Enablon inspeccionado usa UTF-8 SIN BOM (los templates "padre" son UTF-16LE+BOM, los "hijo" son Latin-1 de un solo byte, y 2/4 Operational reales ya usan UTF-8+BOM) -- bare UTF-8 es el único patrón sin precedente real. No se cambia a UTF-16LE (dialecto nativo del template, pero `candidate` no `validated` como contrato de importación -- ver evidence_inventory.md §3) ni delimiter/quoting: sin evidencia concluyente de que Enablon los EXIJA. Ver Informe-Micro-Sprint-9.9.1-Enablon-CSV-Output-Contract-EMF.md.
   delimiter: "\t"  # el CSV histórico real (Bloque4) es tab-delimited, UTF-16LE con comillas — ver evidence_inventory.md §3 y Drills-22072026-41.csv.
   quoting: minimal  # csv.QUOTE_MINIMAL; el histórico cita con comillas casi todo, pero no hay evidencia de que Enablon lo EXIJA para todas las columnas de este prototipo (ninguna contiene el delimitador salvo texto libre, que queda fuera del alcance).
   line_terminator: "\r\n"

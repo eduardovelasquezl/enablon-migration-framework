@@ -44,7 +44,9 @@ def test_export_sample_contra_sql_server_real(tmp_path):
 
     # El CSV debe ser reabrible y UTF-8 -- reconfirma lo que ya valida
     # `validator.validate_output_csv`, esta vez sobre datos reales.
-    text = result.csv_path.read_text(encoding="utf-8")
+    # utf-8-sig: el Output Contract corregido en Micro-sprint 9.9.1 escribe
+    # BOM UTF-8 (config/exports/drills.yaml -> output.bom: true).
+    text = result.csv_path.read_text(encoding="utf-8-sig")
     assert text.splitlines()[0].split("\t") == [
         "CS_Typology", "Reference", "StartingDate", "CS_HistoricalOriginID",
         "CS_Letter", "CS_ImpactedEntities", "CS_WorkflowStatus", "CS_HistoricalDataOrigin",

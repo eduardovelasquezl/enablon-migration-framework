@@ -1,0 +1,210 @@
+INFORME - MICRO-SPRINT 9.9.1: ENABLON CSV OUTPUT CONTRACT
+================================================================================
+
+Fecha: 2026-08-14
+Objetivo: determinar con evidencia el CSV Output Contract real de Enablon y
+corregir, una sola vez en el Export Engine, el mojibake detectado antes del
+sample real de Safety Meetings (Sprint 9.9, todavia sin autorizar).
+
+Documentacion completa:
+reports/executions/2026-08-14/Informe-Micro-Sprint-9.9.1-Enablon-CSV-Output-Contract-EMF.md
+
+--------------------------------------------------------------------------------
+FASE 0 - PREFLIGHT
+--------------------------------------------------------------------------------
+
+HEAD 3ddbb0b confirmado. Suite antes: 844 passed, 7 skipped. Sprint 9.9 sin
+cambios funcionales pendientes. Sin SQL real, sin full, sin push.
+
+--------------------------------------------------------------------------------
+FASE 1 - INSPECCION BYTE-LEVEL
+--------------------------------------------------------------------------------
+
+CSV_Enablon_Template (Platform Contract, 15 ficheros): 2 dialectos reales,
+ambos auto-descriptivos, ninguno UTF-8 sin BOM:
+- "Padre" (9 ficheros: Drills, Change Register, Group Meetings, Events,
+  Impacts, Inspections, Investigations, List of Activities, Observations):
+  UTF-16LE + BOM + TAB + quote-all + CRLF.
+- "Hijo"/detalle (6 ficheros: Causes Data, Checklists Data, Impact Injuries,
+  Inspection Data, PSM forms, Update External Meeting Participations):
+  Latin-1/Windows-1252 + ; + quote-all + CRLF, sin BOM.
+Coincide con hallazgo ya registrado en Sprint 8.2 (evidence_inventory.md
+§3) sobre un set distinto de 17 CSV -- mismos 6 ficheros "hijo"
+identificados independientemente. Clasificado como candidate (evidencia de
+formato), nunca validated (contrato de importacion confirmado).
+
+CSV_Enablon_Operational (Project Contract, 4 ficheros): UTF-8, ; delimitado;
+2 de 4 (Reuniones de grupo, Inspections) YA usan BOM UTF-8 por su cuenta.
+
+EMF (antes): UTF-8, SIN BOM, TAB, quoting minimal, CRLF -- unico perfil de
+todos los inspeccionados que combina UTF-8 con ausencia de BOM.
+
+CAUSA DEL MOJIBAKE ("PrevenciAn.ITP_BES" en vez de "Prevencion.ITP_BES"):
+verificada byte a byte en config/exports/bypass.yaml (fuente) Y en el CSV
+real generado (outputs/prototype/bypass/20260814T061625Z/bypass.csv) --
+ambos ya contienen \xc3\xb3, UTF-8 CORRECTO para "o" con tilde. EMF ya
+escribia bytes correctos.
+
+CLASIFICACION: B - bytes UTF-8 correctos, mal interpretados al abrir sin
+BOM. NO es A (bug de escritura), NO es C (fuente ya correcta), NO es D.
+
+--------------------------------------------------------------------------------
+FASE 2 - OUTPUT CONTRACT
+--------------------------------------------------------------------------------
+
+encoding: utf-8 (sin cambios)
+bom: true (CORREGIDO, antes false)
+delimiter: TAB (sin cambios)
+quoting: minimal (sin cambios)
+line_ending: CRLF (sin cambios)
+
+Confirmado (Enablon/Platform): ningun artefacto real usa UTF-8 sin BOM.
+Confirmado (Moeve/project): 2/4 Operational ya usan UTF-8+BOM.
+NO concluyente: si Enablon EXIGE UTF-16LE+TAB en importacion (candidate,
+no validated, ya clasificado asi en Sprint 8.2) -- no se cambia sin
+evidencia mas fuerte. NO se cambia a Latin-1: NameZH (Drills, Field Specs
+real) y el fan-out cloneorigin a 5 idiomas (incluye ZH) exigen CJK
+completo, imposible en Latin-1.
+
+--------------------------------------------------------------------------------
+FASE 3 - REVISION DEL ENGINE
+--------------------------------------------------------------------------------
+
+write_csv ya era el UNICO punto de escritura para los 3 modulos (identidad
+de objeto, Sprint 9.8). No hardcodeado. HALLAZGO PROPIO de esta fase:
+validate_csv_structure decodificaba con output_spec.encoding a secas,
+ignorando output_spec.bom -- sin efecto mientras bom=false, pero en cuanto
+se corrige a true habria dejado U+FEFF colgando de la primera cabecera y
+roto la validacion en los 3 modulos. Verificado empiricamente antes de
+tocar ningun YAML.
+
+--------------------------------------------------------------------------------
+FASE 4 - IMPLEMENTACION MINIMA
+--------------------------------------------------------------------------------
+
+UNA sola funcion compartida, no 3 correcciones independientes:
+- engine/writer.py: nueva resolve_text_encoding(output_spec), extraida del
+  if inline de write_csv (comportamiento identico).
+- engine/validator.py: validate_csv_structure ahora usa
+  resolve_text_encoding en vez de output_spec.encoding a secas -- cierra el
+  hallazgo de la Fase 3 antes de activar bom=true.
+- config/exports/{drills,bypass,safety_meetings}.yaml: bom false->true, una
+  decision documentada una vez (drills.yaml completo, bypass/SM remiten a
+  el). Ningun reemplazo de texto sobre datos -- solucion de encoding, no de
+  contenido. delimiter/quoting/encoding-family sin cambios.
+
+--------------------------------------------------------------------------------
+FASE 5 - TESTS
+--------------------------------------------------------------------------------
+
+17 tests nuevos en test_export_engine.py: resolve_text_encoding (3 casos),
+BOM presente/ausente en bytes reales (2), Unicode parametrizado -- 5 casos
+("Prevencion.ITP_BES" el caso real, tildes/ene, CJK, em-dash -- delimitador
+dentro de valor, comillas embebidas (RFC4180), vacio/null (nunca
+None/NULL literal), CRLF, validate_csv_structure con BOM sin U+FEFF
+colgando, y confirmacion de que los 3 modulos declaran el MISMO contrato.
+
+--------------------------------------------------------------------------------
+FASE 6 - REGRESION
+--------------------------------------------------------------------------------
+
+3 tests SI fallaron al activar bom=true (bypass/drills_core/safety_meetings
+pipeline) -- exactamente el caso anticipado por el encargo (golden tests
+congelando el formato incorrecto). NO se revirtio el fix -- se corrigieron
+para decodificar utf-8-sig, con comentario explicito. Un 4o call site sin
+cobertura por defecto (test_drills_export_integration.py) corregido igual
+por consistencia.
+
+Impacto: Drills/Bypass/Safety Meetings generaran CSV con BOM UTF-8 desde la
+proxima ejecucion -- Bypass resuelve el mojibake reportado; Safety Meetings
+afecta directamente al sample de Sprint 9.9 (aun sin autorizar).
+
+SUITE FINAL: 860 passed, 7 skipped. Cero regresiones reales.
+
+--------------------------------------------------------------------------------
+FASE 7 - FIELD SPECIFICATIONS: INVENTARIO (SOLO LECTURA)
+--------------------------------------------------------------------------------
+
+Fichero: Catalogs/Enablon_Field_Specifications/Raw/Export_Spec_Stand30.xls.xlsx
+(NO modificado, NO normalizado).
+
+Formato: XLSX, 25 hojas -- 1 "Page Resume" (permisos/roles, no field-level),
+4 "Recuperado_HojaN" (recovery de Excel, casi vacias), 20 hojas de objeto
+real (Drills, Group Meetings, Meeting External Participations, Events,
+Impacts, Impact Injuries, Investigations, PSM forms, 3 variantes de Action
+Plans aliadas -- "zB" = alias desde By-Passes --, Inspections(acs),
+Checklists(acs), Observations, Inspection Data, Change Register,
+Checklists(MC), Data Answers, Teams).
+
+Estructura: cabecera real en fila 13 (Short Name/Long Name/On Line Help/
+XML Info=codigo de campo real/Type/Size Max/Mandatory/Export/Import/
+Sensitivity Level...), datos desde fila 14. Filas 1-2 son resto de otra
+hoja de filtro, sin relacion.
+
+~1238 filas de campo en total, 372 (30%) son CS_*. Metadatos confirmados:
+Type, Size Max (longitud maxima real), Mandatory, Export/Import
+(participacion real en importacion), Sensitivity Level (datos personales),
+Type=MultiLink/Link (referencia a otro objeto/catalogo).
+
+Bypass NO tiene hoja propia -- mismo patron que en CSV_Enablon_Template
+(sin Template propio); solo aparece via Action Plans(zB).
+
+HALLAZGO CONCRETO: TitleEN (hoja Group Meetings) tiene Size Max=240 --
+respalda fuertemente el candidato de Sprint 9.8 (Parametro=239 del ETL,
+"podria ser max_length, no confirmado"). Registrado, NO implementado.
+
+Propuesta de Field Catalog gobernado (diseno, no implementado): YAML
+derivado versionado por objeto, generado por script desde el XLSX (nunca a
+mano); Raw/ permanece como fuente de verdad inmutable.
+
+--------------------------------------------------------------------------------
+FASE 8 - ACTION PLANS: DECISION ARQUITECTONICA REGISTRADA
+--------------------------------------------------------------------------------
+
+Regla de rollout (documentada, NO implementada): 1) cargar modulos padre,
+2) Enablon asigna IDs definitivos, 3) exportar Historical ID + Enablon ID,
+4) construir Reference Crosswalk, 5) resolver relaciones de Action Plans,
+6) generar/cargar Action Plans al final.
+
+Crosswalk conceptual (NO implementado): source_system, source_object_type,
+historical_id, enablon_id, reference, project, load_execution_id -- clave
+de resolucion es la TUPLA completa, nunca historical_id aislado (mismo
+riesgo de colision ya conocido con IDCentro ITP vs GCT).
+
+Estados: RESOLVED (exactamente 1 enablon_id), UNRESOLVED (ninguno todavia),
+AMBIGUOUS (mas de 1 candidato, nunca se elige uno en silencio -- mismo
+principio que EntityCatalog.conflicting_keys).
+
+--------------------------------------------------------------------------------
+PUERTA - 16 PUNTOS
+--------------------------------------------------------------------------------
+
+1. Formato real: 2 dialectos auto-descriptivos (UTF-16LE+BOM+TAB para
+   objetos padre; Latin-1+; para objetos hijo), ninguno UTF-8 sin BOM.
+2. Formato anterior EMF: UTF-8 sin BOM, TAB, quoting minimal, CRLF.
+3. Causa mojibake: B, bytes UTF-8 ya correctos, mal interpretados al abrir.
+4. Cambio realizado: bom false->true en los 3 YAML (una decision
+   compartida); resolve_text_encoding extraida y reutilizada por el
+   validador (hallazgo propio, corregido antes de activar bom=true).
+5. Pruebas Unicode: 5 casos parametrizados + delimitador/comillas/vacio/CRLF
+   -- 17 tests nuevos.
+6. Impacto Drills: CSV con BOM desde la proxima ejecucion, 1 test corregido.
+7. Impacto Bypass: idem, resuelve el mojibake reportado.
+8. Impacto Safety Meetings: idem, afecta al sample de Sprint 9.9 (sin
+   autorizar).
+9. Suite final: 860 passed, 7 skipped, cero regresiones reales.
+10. Inventario Field Specifications: XLSX, 25 hojas, ~1238 filas de campo.
+11. Presencia CS_*: si, 372/1238 (30%).
+12. Propuesta Field Catalog: YAML derivado versionado, generado por script,
+    Raw/ intacto. No implementado.
+13. Decision Action Plans: regla de rollout de 6 pasos + crosswalk de 7
+    campos + 3 estados. No implementado.
+14. Archivos modificados: engine/writer.py, engine/validator.py, 3 YAML de
+    config/exports/, 5 ficheros de test. src/core/ sin cambios.
+15. Commit propuesto, SIN ejecutar: fix(export): correct CSV Output
+    Contract (UTF-8 BOM) across all modules.
+16. Confirmaciones: 0 SQL real, 0 full, 0 push, Raw/ intacto (solo
+    lectura), ningun dato real versionado.
+
+DETENIDO. No se reanuda Sprint 9.9 ni se ejecuta su comando SQL sin
+autorizacion explicita adicional.

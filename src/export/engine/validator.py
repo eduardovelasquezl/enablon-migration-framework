@@ -6,6 +6,13 @@ genérico (recibe `OutputSpec`, no el config completo del módulo -- ver su
 propio docstring de Sprint 9.4). `drills/validator.py::validate_output_csv`
 ENVUELVE esta función con sus propias comprobaciones adicionales
 (`Reference` regex, `expected_row_count`) -- nunca las duplica.
+
+Decodifica con `writer.resolve_text_encoding` (Micro-sprint 9.9.1), no con
+`output_spec.encoding` a secas -- hallazgo propio de ese micro-sprint:
+decodificar sin tener en cuenta `output_spec.bom` deja `U+FEFF` colgando
+del primer valor de cabecera en cuanto un módulo declara `bom=true`,
+rompiendo la comparación de cabecera más abajo. Sin efecto observable
+mientras todos los módulos declaraban `bom=false`.
 """
 from __future__ import annotations
 
@@ -14,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.export.engine.config import OutputSpec
+from src.export.engine.writer import resolve_text_encoding
 
 
 @dataclass
@@ -44,10 +52,11 @@ def validate_csv_structure(
         return result
 
     raw_bytes = path.read_bytes()
+    decode_encoding = resolve_text_encoding(output_spec)
     try:
-        text = raw_bytes.decode(output_spec.encoding)
+        text = raw_bytes.decode(decode_encoding)
     except UnicodeDecodeError as exc:
-        result.issues.append(f"El fichero no es {output_spec.encoding} válido: {exc}")
+        result.issues.append(f"El fichero no es {decode_encoding} válido: {exc}")
         return result
 
     reader = csv.reader(text.splitlines(), delimiter=output_spec.delimiter, quotechar='"')

@@ -43,7 +43,7 @@ source:
 output:
   filename: bypass.csv
   encoding: utf-8
-  bom: false
+  bom: true  # CORREGIDO Micro-sprint 9.9.1 (antes: false). Este módulo es el origen del hallazgo: "PrevenciÃ³n.ITP_BES" en vez de "Prevención.ITP_BES" en CS_HistoricalDataOrigin -- confirmado byte a byte que EMF ya escribía UTF-8 correcto (\xc3\xb3), mojibake causado por abrir sin BOM (Causa B). Mismo Output Contract que Drills/Safety Meetings -- ver config/exports/drills.yaml y Informe-Micro-Sprint-9.9.1-Enablon-CSV-Output-Contract-EMF.md para la evidencia completa (no se repite aquí).
   delimiter: "\t"
   quoting: minimal
   line_terminator: "\r\n"

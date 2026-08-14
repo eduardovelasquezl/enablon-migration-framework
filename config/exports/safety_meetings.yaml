@@ -42,7 +42,7 @@ source:
 output:
   filename: safety_meetings.csv
   encoding: utf-8
-  bom: false
+  bom: true  # CORREGIDO Micro-sprint 9.9.1 (antes: false). Mismo Output Contract que Drills/Bypass, aplicado a los 3 módulos por el mismo hallazgo (mojibake por UTF-8 sin BOM, Causa B) -- ver config/exports/drills.yaml y Informe-Micro-Sprint-9.9.1-Enablon-CSV-Output-Contract-EMF.md para la evidencia completa (no se repite aquí).
   delimiter: "\t"
   quoting: minimal
   line_terminator: "\r\n"

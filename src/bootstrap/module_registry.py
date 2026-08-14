@@ -1,19 +1,20 @@
 """Composition root del Module Registry (Sprint 8.6; segundo módulo real
--- Bypass -- añadido en Sprint 9.4).
+-- Bypass -- añadido en Sprint 9.4; tercer módulo real -- Safety Meetings
+-- añadido en Sprint 9.7).
 
 Único lugar central del repositorio que importa un módulo funcional
-concreto (Drills, Bypass) para registrarlo en el `ModuleRegistry`
-genérico del Core. `src/core/module_registry.py` no importa nada de
-aquí -- es este fichero quien importa de ambos lados (Core y cada
-módulo) y los conecta, mismo patrón de dirección de dependencia ya
-establecido por `src/export/prototype/drills/core_adapters.py` /
-`src/export/prototype/bypass/core_adapters.py` para `StageRegistry` (ver
-`docs/01-architecture/architecture-overview.md` § 1).
+concreto (Drills, Bypass, Safety Meetings) para registrarlo en el
+`ModuleRegistry` genérico del Core. `src/core/module_registry.py` no
+importa nada de aquí -- es este fichero quien importa de ambos lados
+(Core y cada módulo) y los conecta, mismo patrón de dirección de
+dependencia ya establecido por `src/export/prototype/drills/core_adapters.py`
+/ `src/export/prototype/bypass/core_adapters.py` /
+`src/export/prototype/safety_meetings/core_adapters.py` para
+`StageRegistry` (ver `docs/01-architecture/architecture-overview.md` § 1).
 
-Bypass demuestra en la práctica que este patrón se replica sin tocar
-`src/core/` -- ver docs/07-developer-guide/bypass-module.md § 3/6.
-Cuando exista un tercer módulo migrable real, su registro se añade aquí
-junto a los dos anteriores -- nunca dentro de `src/core/`.
+Safety Meetings confirma, con un TERCER módulo real, que este patrón se
+replica sin tocar `src/core/` -- ver
+docs/07-developer-guide/safety-meetings-module.md § 3/6.
 """
 from __future__ import annotations
 
@@ -37,6 +38,12 @@ from src.export.prototype.drills.core_adapters import (
     build_drills_pipeline_definition,
     build_execution_context,
     register_drills_stages,
+)
+from src.export.prototype.safety_meetings.core_adapters import (
+    OBJECT_TYPE as SAFETY_MEETINGS_OBJECT_TYPE,
+    build_execution_context as build_safety_meetings_execution_context,
+    build_safety_meetings_pipeline_definition,
+    register_safety_meetings_stages,
 )
 
 # Alias verificado contra config/exports/drills.yaml (`module: simulacros`)
@@ -172,17 +179,95 @@ def _build_bypass_definition() -> ModuleDefinition:
     )
 
 
+def _safety_meetings_pipeline_factory(
+    request: ExecutionRequest, registry: StageRegistry,
+) -> tuple[PipelineDefinition, ExecutionContext]:
+    """Mismo patrón que `_drills_pipeline_factory`/`_bypass_pipeline_factory`
+    -- Sprint 9.7 confirma, con un TERCER módulo real, que se replica sin
+    cambios de Core."""
+    register_safety_meetings_stages(registry)
+    definition = build_safety_meetings_pipeline_definition()
+    context = build_safety_meetings_execution_context(request)
+    return definition, context
+
+
+def _build_safety_meetings_definition() -> ModuleDefinition:
+    return ModuleDefinition(
+        module_id=SAFETY_MEETINGS_OBJECT_TYPE,
+        canonical_name="Group_Meetings",
+        display_name="Safety Meetings (Reuniones de grupo)",
+        version="0.1.0",
+        status=ModuleImplementationStatus.EXPERIMENTAL,
+        # 'experimental', no 'implemented': mismo motivo que Drills/Bypass
+        # -- config/exports/safety_meetings.yaml declara
+        # prototype_status=review_only, y este incremento (Sprint 9.7) se
+        # detiene deliberadamente en SAFETY_MEETINGS_OFFLINE_SAMPLE_READY,
+        # sin sample real ejecutado todavía.
+        capabilities=ModuleCapabilities(frozenset({
+            ModuleCapability.EXPORT,
+            ModuleCapability.SAMPLE,
+            ModuleCapability.FULL,
+            ModuleCapability.VALIDATION,
+            ModuleCapability.MANIFEST_DRIVEN_RESOURCES,
+            ModuleCapability.MAPPING,
+            # NO 'evidence': no implementada (src/evidence/ sigue
+            # hardcodeado a Drills, ver Sprint 9.5.1/9.6/9.7) --
+            # declararla sería falsear una capacidad no demostrada.
+            # NO 'comparison': el Project Contract real (Operational) es
+            # uno de los DOS candidatos de un módulo genuinamente
+            # multi-object (ver metadata['multi_object_gap']) -- conectar
+            # comparison automática antes de resolver esa ambigüedad
+            # arriesgaría comparar contra el objeto equivocado.
+            # NO 'legacy_cli': solo el camino genérico 'run' aplica, igual
+            # que Bypass.
+            # NO 'canonicalization': mismo motivo que Bypass -- sin valor
+            # demostrado todavía.
+            # NO 'import': este repositorio no ejecuta cargas contra
+            # Enablon (CLAUDE.md).
+        })),
+        aliases=frozenset(),
+        pipeline_factory=_safety_meetings_pipeline_factory,
+        supported_modes=frozenset({"sample", "full"}),
+        required_artifact_types=frozenset({"sql", "mapping"}),
+        optional_artifact_types=frozenset({"operational_csv", "etl", "errors"}),
+        description=(
+            "Safety Meetings / Group_Meetings -- prototipo de exportación "
+            "review_only (7 de 26 columnas del Template real, ver "
+            "config/exports/safety_meetings.yaml). Tercer módulo con "
+            "pipeline ejecutable del EMF (Sprint 9.7), construido "
+            "directamente sobre el Export Engine mínimo (Sprint 9.6), "
+            "detenido en SAFETY_MEETINGS_OFFLINE_SAMPLE_READY -- sin "
+            "sample real ejecutado todavía. Cubre únicamente el objeto "
+            "Group_Meetings -- Update_External_Meeting_Participations "
+            "(segundo objeto Enablon real de este módulo) queda fuera de "
+            "alcance, registrado como MULTI_OBJECT_GAP."
+        ),
+        metadata={
+            "source_system": "prevencion",
+            "prototype_status": "review_only",
+            "object_id": SAFETY_MEETINGS_OBJECT_TYPE,
+            "multi_object_gap": (
+                "Safety Meetings tiene 2 objetos Enablon reales "
+                "(Group_Meetings, Update_External_Meeting_Participations); "
+                "este módulo solo implementa el primero -- ver "
+                "docs/07-developer-guide/safety-meetings-module.md."
+            ),
+        },
+    )
+
+
 def build_default_module_registry() -> ModuleRegistry:
-    """Registro por defecto del EMF: Drills (Sprint 8.6) y Bypass (Sprint
-    9.4) -- los dos únicos módulos con `pipeline_factory` real. Los 6
-    restantes del Workspace Manifest de ejemplo (`safety_meetings`,
-    `moc`, `events`, `ops`, `inspections`, `corrective_actions`) NO se
-    registran aquí todavía -- ninguno tiene un `pipeline_factory` real
-    (Fase 9 del encargo original de Drills: "no confundir presencia en
-    el proyecto con soporte del software"). Su presencia en
+    """Registro por defecto del EMF: Drills (Sprint 8.6), Bypass (Sprint
+    9.4) y Safety Meetings (Sprint 9.7) -- los tres únicos módulos con
+    `pipeline_factory` real. Los 5 restantes del Workspace Manifest de
+    ejemplo (`moc`, `events`, `ops`, `inspections`, `corrective_actions`)
+    NO se registran aquí todavía -- ninguno tiene un `pipeline_factory`
+    real (Fase 9 del encargo original de Drills: "no confundir presencia
+    en el proyecto con soporte del software"). Su presencia en
     `examples/workspace/workspace.example.yaml` (status=planned) describe
     el ROADMAP del proyecto, no lo que el software sabe ejecutar hoy."""
     registry = ModuleRegistry()
     registry.register(_build_drills_definition())
     registry.register(_build_bypass_definition())
+    registry.register(_build_safety_meetings_definition())
     return registry

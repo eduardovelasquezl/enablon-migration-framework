@@ -113,25 +113,26 @@ def test_ningun_modulo_declara_import():
 
 
 def test_modulos_futuros_del_manifest_no_estan_registrados():
-    """Los 6 módulos restantes del Workspace Manifest de ejemplo (Sprint
+    """Los 5 módulos restantes del Workspace Manifest de ejemplo (Sprint
     8.4) no tienen pipeline real -- no deben aparecer en el ModuleRegistry
     (Fase 9 del encargo: 'no confundir presencia en el proyecto con
     soporte del software'). 'bypass' se retiró de esta lista en Sprint
-    9.4: ahora SÍ tiene un pipeline_factory real, ver
-    test_registry_tiene_drills_y_bypass."""
+    9.4, 'safety_meetings' en Sprint 9.7 -- ambos SÍ tienen un
+    pipeline_factory real, ver test_registry_tiene_drills_bypass_y_safety_meetings."""
     registry = build_default_module_registry()
     for module_id in (
-        "safety_meetings", "moc", "events", "ops", "inspections", "corrective_actions",
+        "moc", "events", "ops", "inspections", "corrective_actions",
     ):
         assert not registry.contains(module_id), f"{module_id!r} no debería estar registrado todavía"
 
 
-def test_registry_tiene_drills_y_bypass():
-    """Sprint 9.4: Bypass es el segundo módulo real registrado, junto a
-    Drills -- ver docs/07-developer-guide/bypass-module.md."""
+def test_registry_tiene_drills_bypass_y_safety_meetings():
+    """Sprint 9.7: Safety Meetings es el tercer módulo real registrado,
+    junto a Drills y Bypass -- ver
+    docs/07-developer-guide/safety-meetings-module.md."""
     registry = build_default_module_registry()
-    assert set(registry.list_modules()) == {"drills", "bypass"}
-    assert set(registry.list_executable()) == {"drills", "bypass"}
+    assert set(registry.list_modules()) == {"drills", "bypass", "safety_meetings"}
+    assert set(registry.list_executable()) == {"drills", "bypass", "safety_meetings"}
 
 
 # --------------------------------------------------------------------------

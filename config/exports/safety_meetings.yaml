@@ -1,0 +1,271 @@
+# Definición ejecutable de exportación — safety_meetings.Group_Meetings
+# (Sprint 9.7 -- tercer módulo real del EMF, construido sobre el Export
+# Engine mínimo de Sprint 9.6).
+#
+# Alcance: incremento vertical mínimo, mismo criterio que Drills/Bypass --
+# solo columnas con evidencia (a) SQL confirmada, (b) mapping confirmado
+# vía la hoja MAP-SM/hojas satélite del ETL real
+# (`ETL- Reunionesdegrupo-fixEntities_SITECAN.xlsx`), o (c) cruzadas contra
+# el CSV Operational real (`Reuniones de grupo import completo.csv`).
+# Ninguna columna se completó por analogía con Drills/Bypass -- ver
+# docs/07-developer-guide/safety-meetings-module.md para la evidencia
+# completa de cada regla.
+#
+# ALCANCE DE OBJETO (Fase 2/3 de Sprint 9.7): Safety Meetings es, en
+# Enablon, 2 objetos reales distintos -- Group_Meetings (este incremento) y
+# Update_External_Meeting_Participations (una tabla de enlace poblada
+# DESPUÉS de que Enablon asigne un Id al Group Meeting, referenciada por
+# ese Id, no por CS_HistoricalOriginID -- estructuralmente no es un export
+# histórico paralelo). Este YAML cubre ÚNICAMENTE Group_Meetings --
+# Update_External_Meeting_Participations queda fuera de alcance,
+# registrado como MULTI_OBJECT_GAP, no simulado ni forzado aquí.
+
+object_id: safety_meetings
+module: safety_meetings
+migration_object: Group_Meetings
+prototype_status: review_only
+
+pipeline:
+  stages: [query, transform_and_export]
+  # Sin 'canonicalize'/'evidence' -- mismo criterio que Bypass (Sprint 9.4):
+  # no aportan valor demostrado para alcanzar OFFLINE_SAMPLE_READY.
+
+source:
+  connection: prevencion
+  # Query única, sin JOIN (confirmado leyendo el fichero -- SELECT directo
+  # sobre ITP_REUNION_GRUPO, ninguna tabla de dimensión unida) -- a
+  # diferencia de Bypass, aquí no hay discrepancia entre SQL candidatas ni
+  # riesgo de INNER/FULL JOIN: una única query, sin ambigüedad.
+  sql_file: "sql/source_queries/SM/SM2025.sql"
+  max_rows: 2000000  # alineado con config/databases.yaml -> safety.max_rows_per_query
+
+output:
+  filename: safety_meetings.csv
+  encoding: utf-8
+  bom: false
+  delimiter: "\t"
+  quoting: minimal
+  line_terminator: "\r\n"
+  include_header: true
+
+invalid_row_policy: report_and_exclude_from_csv
+
+# --------------------------------------------------------------------------
+# Catálogos extraídos UNA VEZ de las hojas Mapeo_Flujos / Mapeo_Nivel /
+# Mapeo_Letra del ETL real (`ETL- Reunionesdegrupo-fixEntities_SITECAN.xlsx`,
+# 40 hojas, modo solo lectura data_only=True), Sprint 9.7. Cruzados contra
+# los valores observados en el CSV Operational real (`Reuniones de grupo
+# import completo.csv`, 1734 filas reales -- contadas respetando campos
+# multilínea, NO por salto de línea físico, mismo error a evitar ya
+# documentado en Sprint 9.5 para Bypass) como confirmación auxiliar.
+# --------------------------------------------------------------------------
+reference_data:
+  # FaseActual -> CS_WorkflowStatus (Mapeo_Flujos, 4 filas, sin nullcontrol
+  # documentado) -- cruzado: {Completed, Initiated, Scheduled} observados
+  # en el Operational real, los 3 dentro de esta tabla ('Validation' no
+  # observado en la muestra pero es un valor de destino válido).
+  workflow_status_lookup:
+    1: "Scheduled"
+    2: "Initiated"
+    3: "Validation"
+    4: "Completed"
+
+  # IDNivel -> CS_Level (Mapeo_Nivel, 7 filas, sin nullcontrol documentado)
+  # -- cruzado: {1,2,3,4,5,6,8} == exactamente los valores CS_Level
+  # observados en el Operational real (además de ~19 filas vacías, sin
+  # regla de null-default confirmada -- quedan unresolved, no se inventa
+  # un default).
+  level_lookup:
+    256: 1
+    257: 2
+    371: 3
+    372: 4
+    640: 5
+    856: 6
+    857: 8
+
+  # IDLetra -> CS_Letter (Mapeo_Letra, 7 filas, sin nullcontrol documentado)
+  # -- cruzado: {1,2,3,4,5,6,8} == exactamente los valores CS_Letter
+  # observados en el Operational real (mismo patrón de ~19 vacíos sin
+  # default confirmado que CS_Level).
+  letter_lookup:
+    258: 1
+    259: 2
+    373: 3
+    374: 4
+    375: 5
+    377: 8
+    622: 6
+
+fields:
+  - source: "IDReunionGrupo"
+    target: "CS_HistoricalOriginID"
+    required: true
+    transformation: "to_historical_id"  # REUSED de src.export.prototype.drills.transformations -- función genérica, ya reutilizada por Bypass (Sprint 9.4).
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: null
+    validation: "required_non_null"
+    evidence_id: "etl:safety_meetings.mapeo_idins.cloneorigin"
+
+  - source: "FaseActual"
+    target: "CS_WorkflowStatus"
+    required: false
+    transformation: "resolve_lookup"  # REUSED: misma función (resolve_workflow_status) que ya usa Drills -- sin default, unresolved si no hay coincidencia (sin nullcontrol documentado para Mapeo_Flujos).
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: "reference_data.workflow_status_lookup"
+    validation: "warn_if_unresolved"
+    evidence_id: "etl:safety_meetings.mapeo_flujos"
+
+  - source: "IDNivel"
+    target: "CS_Level"
+    required: false
+    transformation: "resolve_lookup"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: "reference_data.level_lookup"
+    validation: "warn_if_unresolved"
+    evidence_id: "etl:safety_meetings.mapeo_nivel"
+
+  - source: "IDLetra"
+    target: "CS_Letter"
+    required: false
+    transformation: "resolve_lookup"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: "reference_data.letter_lookup"
+    validation: "warn_if_unresolved"
+    evidence_id: "etl:safety_meetings.mapeo_letra"
+
+  - source: "Fecha"
+    target: "StartDate"
+    required: false
+    transformation: "passthrough_or_empty"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: null
+    validation: "passthrough_no_validation"
+    evidence_id: "sql:safety_meetings.sm2025.fecha"
+    # HALLAZGO (no se inventa una combinación): la hoja MAP-SM referencia un
+    # campo origen 'FechaHora' que NO existe en la SQL real (solo existen
+    # 'Fecha' y 'Hora' por separado). 'Fecha' ya viene formateada como
+    # datetime completo por la propia SQL (FORMAT(...,'dd/MM/yyyy
+    # HH:mm:ss')) -- se usa tal cual. 'Hora' queda sin usar en este
+    # incremento (STRONGLY_EVIDENCED, no VERIFIED -- ver
+    # safety-meetings-module.md § 1.4).
+
+  - source: "Lugar"
+    target: "CS_MeetingPlace"
+    required: false
+    transformation: "passthrough_or_empty"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: null
+    validation: "passthrough_no_validation"
+    evidence_id: "etl:safety_meetings.map_sm.lugar"
+
+  - source: "Asistentes"
+    target: "CS_HistoricalAtendee"
+    required: false
+    transformation: "passthrough_or_empty"
+    data_type: "string"
+    date_format: null
+    default: null
+    mapping: null
+    validation: "passthrough_no_validation"
+    evidence_id: "etl:safety_meetings.map_sm.asistentes"
+    # LIMITACIÓN CONOCIDA (heredada, no nueva de este incremento): ticket
+    # cliente #7359 (CLAUDE.md/config/modules.yaml) reporta asistentes
+    # incompletos -- "solo se usa 1 de 2 campos origen posibles (Asistentes,
+    # Nombre Usuario)". Este campo es exactamente ese "Asistentes" de texto
+    # libre -- se documenta el defecto conocido, no se corrige aquí (fuera
+    # de alcance de este incremento, y el segundo campo pertenece
+    # estructuralmente al objeto separado Update_External_Meeting_Participations).
+
+# --------------------------------------------------------------------------
+# Columnas del CSV Operational real (22 columnas observadas, Template real
+# tiene 26) EXCLUIDAS de este incremento, con motivo explícito -- no
+# exhaustivo (mismo criterio que Drills/Bypass: se documentan las
+# exclusiones con evidencia real, no se completa la lista entera en un
+# sprint acotado).
+# --------------------------------------------------------------------------
+excluded_columns:
+  - column: "CS_Entity"
+    reason: >
+      Mismo mecanismo IDUnidadOrg -> Entity (catálogo First_Axis vigente)
+      que bloqueó Entity en Bypass (Sprint 9.5) -- confirmado
+      INDEPENDIENTEMENTE una tercera vez: catalogo_resuelto_code_ruta_site.csv
+      / First_Axis_export_bruto.csv son catálogos SOLO de destino
+      (Code/Ruta1/Centro), sin columna IDUnidadOrg de origen. El resultado
+      está validado en producción (config/modules.yaml: gap -4.6%, "sano
+      tras aplicar catálogo real"), el MECANISMO sigue sin ser reproducible
+      offline con lo disponible en este repositorio. UNRESOLVED, no
+      OUT_OF_SCOPE -- mismo patrón que Bypass, ahora con evidencia de que es
+      sistémico, no una particularidad de un módulo.
+  - column: "CS_Scope"
+    reason: >
+      La hoja Mapeo_Nivel del ETL mezcla la tabla DatoOrigen->DatoDestino
+      de IDNivel con una columna 'CS_Scope' de valor constante '1' para las
+      filas mapeadas, sin una regla DatoOrigen->DatoDestino propia y
+      separada -- no se puede distinguir con confianza si CS_Scope es
+      realmente una constante o depende de otra condición no capturada en
+      esta lectura. UNRESOLVED, no se fuerza a constante sin evidencia más
+      limpia.
+  - column: "TitleEN"
+    reason: >
+      Mapeo vía hoja Title_map, regla 'titlefix' con Parametro=239 -- mismo
+      motor no documentado que CLAUDE.md ya registra para titlefix en otros
+      módulos (MOC), sin motor visible en este ETL tampoco. El significado
+      exacto de Parametro=239 (¿longitud máxima?) no está confirmado.
+      Candidato registrado para Field Constraints futuras (ver
+      safety-meetings-module.md § 5), no implementado como código ad hoc
+      aquí.
+  - column: "CS_PendingIssues"
+    reason: >
+      Dos campos origen compiten por este destino: 'TemasPendientes'
+      (passthrough directo, sin adaptación marcada) y 'Observaciones' (vía
+      hoja Trans_Concat, ReglaEspecial='concat'). La hoja Trans_Concat
+      declara el TIPO de regla pero no sus parámetros (orden, separador,
+      literal null) -- no se inventa la composición.
+  - column: ["CS_HistoricalUserId", "CS_HistoricalUserName"]
+    reason: >
+      Datos personales (nombre) resueltos vía hoja ITP_USUARIOS_map desde
+      IDResponsable -- mismo criterio de alcance ya aplicado a Drills/Bypass
+      (OUT_OF_SCOPE_CONFIRMED).
+  - column: "CS_HistoricalAttachedFiles"
+    reason: >
+      Fase transversal de adjuntos, misma exclusión que en Drills/Bypass
+      (fuera de alcance de un incremento vertical de un solo módulo).
+  - column: "Duration"
+    reason: >
+      Dos campos origen compiten: 'Duracion' (columna real de la SQL) y
+      'DuraciónAjustada' (nombre de columna referenciado por el ETL pero
+      AUSENTE de la SQL real -- debe ser un cálculo interno del propio
+      libro, no reproducible solo con la query). No se elige uno de los dos
+      sin evidencia de cuál es el vigente.
+  - column: ["ProcessHazardAnalysis", "Organizer", "Topic", "Agenda",
+             "CS_PointsAddressed", "CS_SuggestionsProvided", "URL", "Id",
+             "WeekDay", "Attachment"]
+    reason: >
+      Resto de columnas del Template real (26 en total) sin revisión a
+      fondo en este incremento -- acotado por tiempo, mismo criterio que la
+      exclusión de 'Description' en Bypass (UNRESOLVED_NON_BLOCKING, no
+      inventado).
+
+# HALLAZGO adicional (no es una excluded_column porque no hay columna
+# destino real que excluir): la hoja Mapeo_IDIns del ETL declara un valor
+# constante `CS_HistoricalDataOrigin = "ITP_REUNION_GRUPO"` -- pero NI el
+# CSV Template real ("Group Meetings-40.csv") NI el CSV Operational real
+# ("Reuniones de grupo import completo.csv") contienen una columna
+# CS_HistoricalDataOrigin. El objeto Enablon Group_Meetings, a diferencia
+# de Drills/Bypass, no parece tener ese campo. Se registra como
+# discrepancia de conocimiento (KNOWLEDGE_GAP) -- no se incluye el campo
+# (no existe destino real que lo reciba), no se asume que el ETL esté
+# equivocado ni que el CSV esté incompleto sin más evidencia.

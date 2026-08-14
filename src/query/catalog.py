@@ -196,3 +196,53 @@ BYPASS_FILTER_CATALOG = ObjectFilterCatalog(
         ),
     },
 )
+
+
+# Catálogo de Safety Meetings / Group_Meetings (Sprint 9.7, tercer módulo
+# real) -- mismo mecanismo genérico que DRILLS_FILTER_CATALOG/
+# BYPASS_FILTER_CATALOG (REUSED_AS_IS), datos propios de Safety Meetings.
+# Columnas confirmadas leyendo `sql/source_queries/SM/SM2025.sql` (query
+# única, sin JOIN -- todos los campos vienen directos de
+# `ITP_REUNION_GRUPO`, ver docs/07-developer-guide/safety-meetings-module.md § 2).
+SAFETY_MEETINGS_FILTER_CATALOG = ObjectFilterCatalog(
+    object_id="safety_meetings",
+    fields={
+        "historical_origin_id": FilterDefinition(
+            field_name="historical_origin_id",
+            sql_source_expression="[ITP_REUNION_GRUPO].[IDReunionGrupo]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description="Identificador histórico de origen de la reunión de grupo (IDReunionGrupo).",
+        ),
+        "center_id": FilterDefinition(
+            field_name="center_id",
+            sql_source_expression="[ITP_REUNION_GRUPO].[IDCentro]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description=(
+                "IDCentro tal cual está en el sistema ITP/Prevención "
+                "(idcentro_map_itp) -- nunca cruzar contra idcentro_map_gct."
+            ),
+        ),
+        "origin_org_unit_id": FilterDefinition(
+            field_name="origin_org_unit_id",
+            sql_source_expression="[ITP_REUNION_GRUPO].[IDUnidadOrg]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description=(
+                "Unidad organizativa de origen (IDUnidadOrg) -- clave de entrada al "
+                "catálogo de entidad First_Axis vigente; igual que en Bypass, este "
+                "repositorio NO tiene hoy un artefacto local IDUnidadOrg->Code/Ruta1 "
+                "para ese catálogo (ver excluded_columns de config/exports/safety_meetings.yaml), "
+                "así que este filtro no puede acotarse todavía a una entidad conocida."
+            ),
+        ),
+        "workflow_phase_id": FilterDefinition(
+            field_name="workflow_phase_id",
+            sql_source_expression="[ITP_REUNION_GRUPO].[FaseActual]",
+            data_type=DATA_TYPE_INTEGER,
+            allowed_operators=("eq", "in"),
+            description="Valor de ORIGEN de fase de flujo (FaseActual) -- no el valor Enablon CS_WorkflowStatus ya traducido.",
+        ),
+    },
+)

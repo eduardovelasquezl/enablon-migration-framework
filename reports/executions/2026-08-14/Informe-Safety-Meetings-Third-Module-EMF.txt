@@ -1,0 +1,257 @@
+INFORME - SPRINT 9.7: SAFETY MEETINGS, TERCER MODULO SOBRE EL EXPORT ENGINE
+================================================================================
+
+Fecha: 2026-08-14
+Estado alcanzado: SAFETY_MEETINGS_OFFLINE_SAMPLE_READY. 0 SQL real, 0
+commit, 0 push, 0 cambios en src/core/.
+
+Documentacion completa (evidencia ETL/SQL/CSV detallada):
+docs/07-developer-guide/safety-meetings-module.md
+reports/executions/2026-08-14/Informe-Safety-Meetings-Third-Module-EMF.md
+
+--------------------------------------------------------------------------------
+FASE 0 - PREFLIGHT
+--------------------------------------------------------------------------------
+
+Rama feature/drills-filtered-exports. Commits e5f8a91/f24f5fd presentes,
+sin push (ahead 2). Baseline: 815 passed, 7 skipped. git diff --check
+limpio.
+
+--------------------------------------------------------------------------------
+FASE 1/2/3 - INVENTARIO Y DECISION SINGLE VS MULTI-OBJECT
+--------------------------------------------------------------------------------
+
+Safety Meetings ES multi-object real: 2 objetos Enablon distintos
+(Group_Meetings y Update_External_Meeting_Participations), confirmado por
+3 fuentes independientes (workspace.yaml real ya lo documentaba, 3 SQL
+distintos en sql/source_queries/SM/, cabeceras CSV reales estructuralmente
+distintas). El segundo objeto referencia al Id que Enablon asigna DESPUES
+de cargar la reunion (no CS_HistoricalOriginID) -- es un paso de enlace
+posterior, no un export historico paralelo.
+
+DECISION: GO, acotado al objeto principal inequivoco (Group_Meetings).
+Update_External_Meeting_Participations = MULTI_OBJECT_GAP registrado, no
+implementado. No se fuerza un artefacto unico falso -- mismo criterio de
+"incremento vertical" ya usado a nivel de columna en Drills/Bypass,
+aplicado aqui a nivel de objeto.
+
+--------------------------------------------------------------------------------
+FASE 4 - REGISTRO DEL MODULO
+--------------------------------------------------------------------------------
+
+module_id = "safety_meetings" (verificado, NO "SM" -- ya advertido en el
+propio codigo de Sprint 9.4/9.5). canonical_name = "Group_Meetings".
+Registrado en src/bootstrap/module_registry.py, mismo patron exacto que
+Drills/Bypass. 0 cambios en src/core/.
+
+--------------------------------------------------------------------------------
+FASE 5/6 - EXPORT CONFIG Y QUERY/FILTER CATALOG
+--------------------------------------------------------------------------------
+
+config/exports/safety_meetings.yaml: 7 campos (4 VERIFIED, 3 STRONGLY_
+EVIDENCED), 8 grupos de excluded_columns con evidencia, 1 discrepancia
+registrada aparte (CS_HistoricalDataOrigin declarado por el ETL pero
+ausente de los 2 CSV reales). Ningun campo copiado de Drills/Bypass.
+
+SQL: sql/source_queries/SM/SM2025.sql -- SELECT directo sobre
+ITP_REUNION_GRUPO, SIN JOIN (la mas simple de los 3 modulos reales), sin
+ORDER BY propio. SELECT-only confirmado. SAFETY_MEETINGS_FILTER_CATALOG: 4
+campos (historical_origin_id/center_id/origin_org_unit_id/workflow_phase_id).
+
+--------------------------------------------------------------------------------
+FASE 7/8 - REUTILIZACION DEL ENGINE Y TRANSFORMACIONES
+--------------------------------------------------------------------------------
+
+7 piezas REUSED_ENGINE (config loader, extractor, is_missing, BaseRunStats+
+build_*_section, determine_status, validator core, GenericQueryStage). 0
+ENGINE_GAP bloqueante. 0 piezas copiadas de las ya extraidas en Sprint 9.6.
+
+to_historical_id/resolve_workflow_status/LookupResult reutilizadas de
+drills.transformations (mismo precedente cross-modulo que Bypass, NO del
+Engine todavia) -- clasificado como evidencia para Sprint 9.8, no como gap
+de este sprint.
+
+transformations.py (55 lineas): 2 funciones reutilizadas + 1 nueva
+(passthrough_or_empty, ~10 lineas). 9 tests unitarios, datos sinteticos.
+
+--------------------------------------------------------------------------------
+FASE 9 - PIPELINE WRAPPER: METRICA REAL, NO LA ESTIMACION
+--------------------------------------------------------------------------------
+
+La estimacion de Sprint 9.6 ("~70-90 lineas en vez de ~400") NO se
+cumplio tal cual. Metrica real (comparando contra Bypass ANTES del Engine,
+commit e5f8a91):
+
+  config.py:         105 -> 45   (-57%)
+  extractor.py:       112 -> 52   (-54%)
+  validator.py:        64 -> 36   (-44%)
+  manifest.py:         135 -> 115  (-15%)
+  core_adapters.py:    157 -> 142  (-10%)
+  SUBTOTAL infra:       573 -> 390  (-32%)
+  pipeline.py:          237 -> 218  (-8%, ruido, no reduccion real)
+  transformations.py:    69 -> 55   (-20%, parcial, no por el Engine)
+
+Lectura honesta: el Engine reduce sustancialmente lo que extrajo (config/
+extractor/validator, -44% a -57%). manifest.py/core_adapters.py se
+redujeron menos (-15%/-10%) porque gran parte de su contenido siempre fue
+module-specific. pipeline.py -- la pieza mas cara, ya clasificada WAIT_FOR_
+THIRD_MODULE -- practicamente NO se redujo (-8%): confirma con un tercer
+punto de datos que es la pieza que falta generalizar y la de mayor impacto
+pendiente. No se persiguio artificialmente el numero estimado.
+
+--------------------------------------------------------------------------------
+FASE 10 - VALIDATION Y determine_status
+--------------------------------------------------------------------------------
+
+Safety Meetings usa determine_status de 3 estados (como Drills), NO el de
+2 estados de Bypass -- decision propia, no copiada: ninguno de sus 3
+lookups tiene default documentado, asi que unresolved/empty son casos
+reales y frecuentes (~19 filas con CS_Level/CS_Letter vacios observadas en
+el Operational real) que un SUCCESS sin matices ocultaria. Confirmado con
+test dedicado. Es la 2a de 3 implementaciones reales que elige 3 estados
+independientemente -- refuerza que Bypass (2 estados) es la excepcion, no
+la norma.
+
+--------------------------------------------------------------------------------
+FASE 11/12/13 - EVIDENCE, PROJECT CONTRACT, FIELD CONSTRAINTS
+--------------------------------------------------------------------------------
+
+Evidence: sin cambios, sigue hardcodeada a Drills. Safety Meetings alcanza
+OFFLINE_SAMPLE_READY sin ella. EVIDENCE_ENGINE_GAP, 3a confirmacion.
+
+Project Contract: "Reuniones de grupo import completo.csv", 1734 filas
+reales (csv-aware, no wc -l que da 9013 incorrecto). CS_HistoricalOriginID
+SIN corrupcion (a diferencia de Bypass) -- IDs limpios. comparison.py sigue
+sin conectar.
+
+Field Constraints: TitleEN (regla titlefix, Parametro=239) registrado como
+candidato -- posible max_length, no confirmado. Ningun value[:N] ad hoc
+implementado.
+
+--------------------------------------------------------------------------------
+FASE 14/15 - TEST OFFLINE END-TO-END Y READINESS REAL
+--------------------------------------------------------------------------------
+
+tests/test_safety_meetings_pipeline.py: 12 tests, todos verdes, cubren los
+11 puntos del checklist (ModuleRegistry, pipeline_factory, GenericQueryStage,
+filtros, transformaciones, validator, CSV+manifest, SQL Guard fail-closed,
+0 regresiones Drills/Bypass via suite completa).
+
+workspace.yaml real editado localmente (fuera de Git, mismo patron que
+Bypass Sprint 9.4): enabled=false/planned -> enabled=true/in_progress,
+template_csv/operational_csv resueltos a los 2 artefactos reales de
+Group_Meetings especificamente.
+
+  workspace validate: OK -- sin violaciones.
+  workspace readiness --module safety_meetings --operation sample:
+    status=ready, 0 blockers, 0 warnings, exit=0.
+  ResourceResolver: operational_csv unico, exists=True.
+
+--------------------------------------------------------------------------------
+FASE 16 - METRICA DEL ENGINE (tabla completa en el .md)
+--------------------------------------------------------------------------------
+
+Fue Safety Meetings mas barato gracias al Engine? PARCIALMENTE SI, de
+forma medible, no dramaticamente. -44% a -57% en los 3 ficheros que el
+Engine extrajo limpiamente; -10% a -15% en manifest/core_adapters (ya eran
+mayormente module-specific); 0% (practicamente) en pipeline.py, la pieza
+mas cara -- el Engine resolvio la duplicacion de "andamiaje", no la de
+"orquestacion de negocio".
+
+--------------------------------------------------------------------------------
+FASE 17 - TERCER PUNTO DE DATOS
+--------------------------------------------------------------------------------
+
+PROVEN_GENERIC (3/3): config loader, extractor, Query Stage, validator
+nucleo, manifest nucleo, CSV writer (ya reutilizado, nunca copiado),
+to_historical_id/resolve_letter-familia (aun fuera del Engine, pero
+evidencia de 3/3 ya cruza el umbral fijado en Sprint 9.6).
+
+PROBABLY_GENERIC: determine_status de 3 estados (2/3 modulos lo eligen
+independientemente; Bypass es la excepcion).
+
+STILL_INSUFFICIENT_EVIDENCE: pipeline.py completo, Transform/Export Stage,
+comparison, Evidence (motor).
+
+--------------------------------------------------------------------------------
+FASE 18 - SIGUIENTE GENERALIZACION (NO IMPLEMENTADA)
+--------------------------------------------------------------------------------
+
+Prioridad recomendada:
+  1. Mover to_historical_id/resolve_letter-familia/LookupResult al Engine
+     -- riesgo minimo, 3/3 identicas, elimina el ultimo acoplamiento
+     modulo->modulo que quedo fuera de Sprint 9.6.
+  2. Migrar Bypass a determine_status de 3 estados -- 2/3 ya lo usan
+     independientemente, la excepcion deberia revisarse.
+  3. Disenar (no implementar) la interfaz de pipeline.py/Transform-Export
+     Stage -- 3 formas reales ya comparables, pero ninguna con
+     comparison+issues+evidence simultaneos salvo Drills -- mayor riesgo.
+  4. NO priorizar: Evidence generica, output a DataWorkspace.
+
+Elegir (3) vs. un 4o modulo antes: ambas defendibles con la evidencia
+disponible, este informe no elige por el usuario.
+
+--------------------------------------------------------------------------------
+FASE 19/20 - SUITE COMPLETA Y DOCUMENTACION
+--------------------------------------------------------------------------------
+
+815 passed, 7 skipped (baseline) -> 836 passed, 7 skipped (final, +21
+tests nuevos). 0 regresiones. git diff --check limpio.
+
+docs/07-developer-guide/safety-meetings-module.md (nuevo) + este informe.
+Sin documentacion redundante.
+
+================================================================================
+PUERTA FINAL - 21 PUNTOS
+================================================================================
+
+ 1. Estado:                    SAFETY_MEETINGS_OFFLINE_SAMPLE_READY
+ 2. Single/multi-object:       multi-object confirmado (2 objetos reales);
+                                 este incremento cubre solo Group_Meetings
+ 3. Artifacts identificados:   ETL (40 hojas), SQL (SM2025.sql + 2 fuera
+                                 de alcance), Template, Operational (1734
+                                 filas), catalogo First_Axis compartido
+ 4. Project Contract:          Reuniones de grupo import completo.csv,
+                                 resuelto via ResourceResolver, exists=True
+ 5. Mappings VERIFIED:         CS_HistoricalOriginID, CS_WorkflowStatus,
+                                 CS_Level, CS_Letter (4, cruzados contra
+                                 datos reales)
+ 6. Mappings unresolved:       CS_Entity (mismo gap que Bypass), CS_Scope,
+                                 TitleEN, CS_PendingIssues, Duration
+ 7. Query seleccionada:        SM2025.sql, SELECT directo sin JOIN
+ 8. Filter catalog:            4 campos (historical_origin_id/center_id/
+                                 origin_org_unit_id/workflow_phase_id)
+ 9. Readiness sample:          ready, 0 blockers, 0 warnings
+10. Tests nuevos:              21 (9 transformaciones + 12 pipeline)
+11. Suite completa:            815 -> 836 passed, 7 skipped, 0 regresiones
+12. Lineas module-specific:    674 lineas totales del modulo
+13. Engine reutilizado:        7 piezas, 0 copiadas
+14. Engine gaps:               to_historical_id/resolve_letter-familia
+                                 fuera del Engine (candidato Sprint 9.8);
+                                 Evidence sin generalizar; pipeline.py sin
+                                 evidencia suficiente para extraer
+15. Core changes:              ninguno
+16. Comparacion 3 modulos:     Engine reduce 32% infraestructura, ~0%
+                                 orquestacion (pipeline.py)
+17. Que generalizar despues:   (1) to_historical_id-familia al Engine,
+                                 (2) Bypass a determine_status 3 estados,
+                                 (3) disenar interfaz de pipeline.py
+18. Candidate filter sample:   historical_origin_id:in:5303,5305,5310,
+                                 5364,5607,5613,5721,5722,5723,5724
+19. Comando propuesto:         python main.py --verbose run --project moeve
+                                 --object safety_meetings --mode sample
+                                 --limit 15 --filter "historical_origin_id:
+                                 in:5303,5305,5310,5364,5607,5613,5721,
+                                 5722,5723,5724" --allow-real-sql
+                                 (verificado offline, NO ejecutado)
+20. Propuesta de commit:       1 commit -- "feat(safety-meetings):
+                                 implement third EMF module on the minimal
+                                 Export Engine" -- NO creado, esperando
+                                 autorizacion
+21. Confirmaciones:            0 SQL real -- 0 full -- 0 push -- 0 datos
+                                 reales versionados -- 0 secretos --
+                                 workspace real fuera de Git -- 0 outputs
+                                 reales generados
+
+NO SE HA EJECUTADO SQL, AUNQUE EL MODULO QUEDA READY. LA EJECUCION REAL
+REQUIERE AUTORIZACION EXPLICITA POSTERIOR.

@@ -23,8 +23,8 @@ from typing import Sequence
 import pandas as pd
 
 from src.config import PROJECT_ROOT
+from src.export.engine.manifest import build_query_filters_section
 from src.export.prototype.drills.exporter import write_csv
-from src.export.prototype.drills.manifest import build_query_filters_section
 from src.query.models import CompiledFilter
 from src.query.sql_builder import render_generated_sql_file
 

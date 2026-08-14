@@ -1,0 +1,232 @@
+INFORME - SPRINT 9.6: MINIMAL EXPORT ENGINE EXTRACTION
+================================================================================
+
+Fecha: 2026-08-14
+Refactor behavior-preserving. 0 SQL real, 0 full, 0 Safety Meetings, 0
+resolucion de Entity, 0 cambio de mappings, 0 multi-object, 0 Field
+Constraints, 0 UI, 0 cambios en src/core/. SIN commit, SIN push.
+
+Documentacion completa (todas las tablas, evidencia detallada):
+reports/executions/2026-08-14/Informe-Minimal-Export-Engine-Extraction-EMF.md
+
+--------------------------------------------------------------------------------
+FASE 0 - PREFLIGHT
+--------------------------------------------------------------------------------
+
+Rama feature/drills-filtered-exports, commit e5f8a91 presente. git status
+limpio (solo settings.local.json y reports/, sin datos reales). git diff
+--check sin marcadores de conflicto. Baseline: 775 passed, 7 skipped.
+
+--------------------------------------------------------------------------------
+FASE 1 - INVENTARIO RECONCILIADO
+--------------------------------------------------------------------------------
+
+De las 7 piezas DUPLICATED_FROM_DRILLS originales:
+  5 EXTRACT_NOW completas: extractor.py, config.py, nucleo de manifest.py,
+    nucleo de validator.py, _is_missing().
+  1 dividida en dos mitades con destino distinto: core_adapters.py -> Query
+    Stage SI se extrae (casi identico linea a linea); Transform/Export
+    Stage NO se extrae (envuelve pipeline.py, sin 2a forma real distinta).
+  1 intacta: pipeline.py completo (687/238 lineas, WAIT_FOR_THIRD_MODULE).
+
+La discrepancia "5 de 7" vs "6 capacidades" del informe de Sprint 9.5.1 no
+era una contradiccion: describia la misma conclusion desde dos angulos (7
+piezas de fichero vs. capacidades individuales, contando Query Stage aparte
+de core_adapters.py en general). Resuelto leyendo codigo real antes de
+mover una linea.
+
+--------------------------------------------------------------------------------
+FASE 2-8 - src/export/engine/ (NUEVO, 745 LINEAS, 7 FICHEROS)
+--------------------------------------------------------------------------------
+
+__init__.py (18), config.py (138), extractor.py (128), values.py (54),
+manifest.py (250), validator.py (71), query_stage.py (86).
+
+- config.py: load_export_config(config_file, container_cls) generico +
+  FieldSpec/OutputSpec/SourceSpec (movidas, no duplicadas).
+- extractor.py: extract_via_sql(source, query_runner=, mode=, limit=,
+  compiled_filters=, sort_column=). CONSTRAINT CRITICO respetado: query_runner
+  se pasa como parametro (nunca importado dentro del Engine) para que
+  monkeypatch.setattr(drills.extractor, "run_query", fake) /
+  bypass.extractor siga funcionando -- 8 tests existentes que dependen de
+  esto siguen en verde. sort_column=None para Drills (su SQL ya ordena),
+  sort_column="FechaCreacion" para Bypass (su SQL no ordena) -- diferencia
+  real preservada por parametro, nunca por "if module".
+- values.py: is_missing()/to_native(). HALLAZGO: la copia de Bypass (Sprint
+  9.4) decia en su propio comentario "identica a la de Drills" pero OMITIA
+  el paso to_native -- verificado leyendo ambas antes de mover nada. No
+  cambia ningun resultado observable (numpy.float64/numpy.str_ ya son
+  subclases de float/str en CPython).
+- manifest.py: BaseRunStats (17 campos identicos en ambos modulos),
+  determine_status (3 estados, logica YA vigente en Drills), build_run_
+  section/build_counts_section/build_output_section/build_connection_
+  section/build_query_filters_section, hashing (_sha256_file/_sha256_text/
+  _git_commit -- estaban COPIADAS LITERAL en bypass/manifest.py en vez de
+  importadas, hallazgo propio de este sprint), write_yaml_atomic/
+  write_text_atomic.
+- validator.py: validate_csv_structure -- nucleo extraido de la version de
+  Bypass (ya era la forma correcta, generica). drills/validator.py la
+  envuelve con sus propias comprobaciones de negocio (BOM/Reference/
+  row-count/pandas-reread), ninguna movida al Engine.
+- query_stage.py: GenericQueryStage/QueryStageSpec -- mismo lifecycle que
+  DrillsQueryStage/BypassQueryStage. NO se creo un segundo sistema de
+  plugins: ModuleAdapter sigue siendo pipeline_factory (core/module_
+  registry.py), sin tocar.
+
+HALLAZGO CLAVE - determine_status de Bypass: Drills distingue 3 estados
+(SUCCESS/SUCCESS_WITH_WARNINGS/FAILED_VALIDATION), Bypass solo 2 (inline).
+determine_status de 3 estados SE EXTRAJO al Engine (Drills lo usa, cero
+cambio para Drills), pero Bypass NO se migro a el en este sprint --
+migrarlo cambiaria su comportamiento observable (empezaria a devolver
+SUCCESS_WITH_WARNINGS en vez de SUCCESS con warnings presentes), no
+autorizado en un refactor behavior-preserving. Clasificacion: A (diferencia
+accidental, sin decision de diseño documentada) Y C (capability generica
+que faltaba) a la vez -- no B. Documentado en el codigo, no corregido.
+
+HALLAZGO ADICIONAL: build_query_filters_section vivia en drills/manifest.py
+y bypass/pipeline.py la importaba DIRECTAMENTE de ahi (acoplamiento bypass
+-> drills no descrito antes). Movida al Engine -- ya ningun modulo importa
+del otro para esto.
+
+--------------------------------------------------------------------------------
+FASE 9/10 - MIGRACION DRILLS Y BYPASS
+--------------------------------------------------------------------------------
+
+Drills: config/extractor/transformations(_is_missing)/manifest/validator/
+core_adapters(Query Stage) migrados. pipeline.py SIN TOCAR.
+Verificacion mas fuerte: test_core_produce_el_mismo_csv_que_pipeline_run_
+directo (preexistente) compara BYTE A BYTE el CSV y por IGUALDAD DE
+DICCIONARIO COMPLETA (incluye hashes) el validation_report/export_manifest
+entre pipeline.run() directo y via Core/Orchestrator -- sigue en verde sin
+modificarse.
+
+Bypass: mismos 6 ficheros + 1 linea de import en pipeline.py. Confirmado
+explicitamente (9/9 tests de test_bypass_pipeline.py en verde): Entity
+sigue UNRESOLVED, INNER JOIN sin tocar, anomalia de fechas sigue como
+hallazgo externo sin normalizar, status de 2 estados intacto.
+
+--------------------------------------------------------------------------------
+FASE 11 - EVIDENCE: DIAGNOSTICO (SIN IMPLEMENTAR)
+--------------------------------------------------------------------------------
+
+9 puntos hardcodeados en 5 ficheros de src/evidence/ (1305 lineas leidas
+completas): DEFAULT_RUNS_ROOT=.../drills, EXPECTED_MIGRATION_OBJECT="Drills",
+output_path=run_dir/"drills.csv", mensajes de error con "Drills" literal,
+catalogo de categorias de incidencia integro de Drills (conocimiento de
+negocio, no parametrizable trivialmente), titulos de hoja Excel "Drills",
+docstrings de alcance. Tabla completa fichero por fichero en el .md.
+
+Contrato minimo de un futuro EvidenceProvider/EvidenceRenderer (nombre NO
+decidido): runs_root/migration_object/csv_filename/category_catalog
+inyectados, igual patron que QueryStageSpec. NO implementado. Bypass sigue
+sin Evidence -- --generate-evidence sigue siendo no-op.
+
+--------------------------------------------------------------------------------
+FASE 12/13 - OUTPUT LOCATION Y FIELD CONSTRAINTS
+--------------------------------------------------------------------------------
+
+Confirmado: el Engine no hardcodea ninguna ruta outputs/... -- ambas
+funciones de escritura reciben Path completo por parametro. Migrar a
+EMF_DATA_ROOT/projects/.../runs/... en el futuro no tocaria el Engine, solo
+cada core_adapters.py. Sin cambios observables en este sprint.
+
+FieldSpec puede ganar constraints: FieldConstraintSpec | None = None de
+forma aditiva pura (construccion siempre por keyword args) sin romper nada
+existente. validate_csv_structure puede ganar un parametro opcional futuro
+de la misma forma. Confirmado viable, nada anadido todavia.
+
+--------------------------------------------------------------------------------
+FASE 14/15 - TESTS Y SUITE COMPLETA
+--------------------------------------------------------------------------------
+
+tests/test_export_engine.py: 40 tests nuevos (unit tests de cada pieza +
+tests arquitectonicos: Engine no importa drills/bypass -- verificado por AST,
+no texto crudo, tras detectar un falso positivo en un docstring en el
+primer intento; Engine sin condicionales por module_id; Drills/Bypass
+consumen el Engine; bypass ya no importa directamente de drills salvo los 2
+acoplamientos ya documentados/deliberados).
+
+Suite completa: 775 passed, 7 skipped (baseline) -> 815 passed, 7 skipped
+(final). 0 regresiones. git diff --check sin marcadores de conflicto.
+
+--------------------------------------------------------------------------------
+FASE 16 - MEDIR RESULTADO
+--------------------------------------------------------------------------------
+
+git diff --stat (solo src/export/prototype/):
+  13 files changed, 304 insertions(+), 796 deletions(-)
+
+src/export/engine/: 745 lineas nuevas (compartidas, antes duplicadas).
+tests/test_export_engine.py: 523 lineas nuevas.
+src/core/: 0 archivos modificados (confirmado por git status/diff --stat).
+Ningun blocker arquitectonico obligo a tocar Core.
+
+Duplicacion restante, deliberada: pipeline.py completo, Transform/Export
+Stage, write_csv (bypass sigue importandolo de drills.exporter, fuera de
+alcance de las 5-6 piezas de Sprint 9.5.1), mappings.py/comparison.py de
+Drills (module-specific por diseño).
+
+--------------------------------------------------------------------------------
+FASE 17 - SAFETY MEETINGS READINESS PREVIEW
+--------------------------------------------------------------------------------
+
+Con el Engine reducido, Safety Meetings necesitaria del orden de ~70-90
+lineas de wrappers delgados (config/extractor/validator/manifest-core/Query
+Stage) en vez de las ~400 lineas que Bypass copio+adapto de Drills en
+Sprint 9.4 para esas mismas piezas. La pieza que sigue siendo cara
+(pipeline.py / Transform-Export Stage, ~150-250 lineas nuevas estimadas) NO
+se reduce -- Safety Meetings seria la 3a confirmacion de forma necesaria
+para abordarla en un sprint posterior (9.7+).
+
+--------------------------------------------------------------------------------
+FASE 18
+--------------------------------------------------------------------------------
+
+Este documento es el entregable. Ninguna documentacion arquitectonica
+existente se describio como aspiracional.
+
+================================================================================
+PUERTA FINAL - 18 PUNTOS
+================================================================================
+
+ 1. Baseline tests:              775 passed, 7 skipped
+ 2. Tests finales:                815 passed, 7 skipped (+40, 0 regresiones)
+ 3. Inventario reconciliado:      5 completas + 1 dividida (Query Stage si /
+                                    Transform-Export no) + 1 intacta
+ 4. Piezas extraidas:             config, extractor, values, manifest
+                                    (nucleo), validator (nucleo), query_stage
+ 5. Piezas module-specific:       pipeline.py completo, Transform/Export
+                                    Stage, mappings.py/comparison.py, todas
+                                    las transformaciones de negocio, RunStats
+                                    de extension, determine_status de Bypass
+                                    (2 estados, sin migrar), validaciones de
+                                    negocio de Drills
+ 6. Estructura src/export/engine/: 7 ficheros, 745 lineas (ver Fase 2)
+ 7. Cambios Drills:               6 ficheros, pipeline.py sin tocar
+ 8. Cambios Bypass:               mismos 6 + 1 linea de import en pipeline.py
+ 9. Equivalencia funcional:       test golden byte-a-byte de Drills en
+                                    verde sin modificarse; 9/9 tests de
+                                    Bypass en verde con Entity/INNER JOIN/
+                                    anomalia intactos
+10. Evidence hardcodes:           9 puntos en 5 ficheros (tabla en .md),
+                                    ninguno corregido
+11. Output-location:              sin cambios observables, Engine no
+                                    bloquea la migracion futura
+12. Field Constraints:            punto de extension confirmado viable,
+                                    nada anadido
+13. Cambios en src/core/:         ninguno
+14. Duplicacion restante:         pipeline.py, Transform/Export Stage,
+                                    write_csv (bypass->drills, fuera de
+                                    alcance)
+15. Safety Meetings preview:      ~70-90 lineas de wrappers vs ~400 antes;
+                                    pipeline.py sigue caro
+16. Archivos modificados/nuevos:  ver lista completa en el .md
+17. Propuesta de commit:          1 commit -- "refactor(export): extract
+                                    minimal Export Engine shared by Drills
+                                    and Bypass" -- NO creado, esperando
+                                    autorizacion
+18. Confirmaciones:               0 SQL real -- 0 full -- 0 datos reales
+                                    versionados -- 0 workspace real
+                                    versionado -- 0 secretos -- 0 push
+
+NO SE HA HECHO COMMIT. ESPERANDO AUTORIZACION EXPLICITA.

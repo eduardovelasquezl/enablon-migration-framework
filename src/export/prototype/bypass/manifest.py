@@ -1,89 +1,66 @@
 """Manifest/validation report mínimos para bypass.By_Passes (Sprint 9.4).
 
-`write_yaml_atomic`/`write_text_atomic` se REUTILIZAN tal cual de
-`src.export.prototype.drills.manifest` -- utilidades de I/O genéricas
-(escritura atómica temporal+rename), sin ningún campo de Drills.
+Desde Sprint 9.6 (Export Engine mínimo), las piezas ya demostradas
+idénticas entre Drills y Bypass viven en `src.export.engine.manifest` --
+`write_yaml_atomic`/`write_text_atomic`/hashing/`git_commit` se importaban
+antes DIRECTAMENTE de `drills/manifest.py` (acoplamiento bypass -> drills);
+ahora ambos módulos importan del Engine, ninguno del otro.
 
-`RunStats`/`build_export_manifest`/`write_validation_report` SÍ son
-nuevos (DUPLICATED_FROM_DRILLS, patrón, no código): el `RunStats` de
-Drills tiene campos específicos de sus 8 columnas (`entities_resolved`,
-`dates_hora_missing_or_invalid`...) que no aplican a las 7 de Bypass --
-forzar la misma clase habría sido peor que un contenedor propio,
-pequeño y honesto sobre lo que Bypass realmente mide."""
+`RunStats` SÍ sigue siendo propio de Bypass (extiende `BaseRunStats` del
+Engine con `lookups_*`, que no aplica a Drills).
+
+`determine_status` de Bypass NO se migra a la versión de 3 estados del
+Engine en este sprint -- sigue calculando inline `FAILED_VALIDATION` si hay
+errores, `SUCCESS` si no, IGUAL que antes de Sprint 9.6. Migrarlo cambiaría
+el comportamiento observable de Bypass (empezaría a devolver
+`SUCCESS_WITH_WARNINGS` cuando antes devolvía `SUCCESS` con warnings
+presentes) -- no autorizado en un refactor behavior-preserving. Ver
+`reports/executions/2026-08-14/Informe-Minimal-Export-Engine-Extraction-EMF.md`
+§ Fase 6 para la clasificación completa de este hallazgo."""
 from __future__ import annotations
 
-import hashlib
-import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.export.prototype.drills.manifest import write_text_atomic, write_yaml_atomic
+from src.export.engine.manifest import (
+    PROTOTYPE_VERSION,
+    BaseRunStats,
+    build_connection_section,
+    build_counts_section,
+    build_output_section,
+    build_query_filters_section,
+    build_run_section,
+    git_commit as _git_commit,
+    sha256_file as _sha256_file,
+    sha256_text as _sha256_text,
+    write_text_atomic,
+    write_yaml_atomic,
+)
 
-__all__ = ["RunStats", "build_export_manifest", "write_validation_report", "write_yaml_atomic", "write_text_atomic"]
+__all__ = [
+    "RunStats", "build_export_manifest", "write_validation_report",
+    "write_yaml_atomic", "write_text_atomic", "build_query_filters_section",
+]
 
 
 @dataclass
-class RunStats:
-    run_id: str
-    timestamp: str
-    mode: str
-    connection_name: str
+class RunStats(BaseRunStats):
+    """Extiende `BaseRunStats` (Engine) con los contadores propios de
+    Bypass -- ninguno de estos campos aplica a Drills."""
 
-    rows_read: int = 0
-    rows_transformed: int = 0
-    rows_exported: int = 0
-    rows_excluded: int = 0
-    warnings: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-
-    missing_historical_origin_id: int = 0
     lookups_resolved: int = 0
     lookups_unresolved: int = 0
     lookups_null_default: int = 0
 
-    output_path: str = ""
-    output_encoding: str = ""
-    output_bom: bool = False
-    output_delimiter: str = ""
-    output_line_terminator: str = ""
-    output_column_count: int = 0
-    output_columns: list[str] = field(default_factory=list)
-
-
-def _sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _git_commit() -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5, check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return None
-
 
 def write_validation_report(stats: RunStats, path: Path) -> dict:
+    # Status de 2 estados, deliberadamente NO migrado a
+    # `engine.manifest.determine_status` (3 estados) -- ver docstring del
+    # módulo para el porqué.
     report = {
-        "run": {
-            "run_id": stats.run_id, "timestamp": stats.timestamp, "mode": stats.mode,
-            "connection_name": stats.connection_name, "migration_object": "By_Passes",
-            "prototype_status": "review_only",
-        },
-        "counts": {
-            "rows_read": stats.rows_read, "rows_transformed": stats.rows_transformed,
-            "rows_exported": stats.rows_exported, "rows_excluded": stats.rows_excluded,
-            "warnings": len(stats.warnings), "errors": len(stats.errors),
-        },
+        "run": build_run_section(stats, migration_object="By_Passes"),
+        "counts": build_counts_section(stats),
         "lookups": {
             "resolved": stats.lookups_resolved, "unresolved": stats.lookups_unresolved,
             "null_default": stats.lookups_null_default,
@@ -91,11 +68,7 @@ def write_validation_report(stats: RunStats, path: Path) -> dict:
         "reference": {
             "missing_historical_origin_id": stats.missing_historical_origin_id,
         },
-        "output": {
-            "path": stats.output_path, "encoding": stats.output_encoding, "bom": stats.output_bom,
-            "delimiter": stats.output_delimiter, "line_terminator": stats.output_line_terminator,
-            "column_count": stats.output_column_count, "columns": stats.output_columns,
-        },
+        "output": build_output_section(stats),
         "status": {
             "result": "FAILED_VALIDATION" if stats.errors else "SUCCESS",
             "blocking_errors": list(stats.errors), "warnings": list(stats.warnings),
@@ -113,12 +86,9 @@ def build_export_manifest(
     return {
         "run_id": run_id, "timestamp": timestamp, "git_commit": _git_commit(),
         "migration_object": "By_Passes", "module": "bypass",
-        "prototype_version": "0.1.0-prototype", "prototype_status": "review_only",
+        "prototype_version": PROTOTYPE_VERSION, "prototype_status": "review_only",
         "mode": mode,
-        "connection": {
-            "name": connection_name,
-            "note": "Sin credenciales -- ver config/databases.yaml y .env (no incluidos aquí).",
-        },
+        "connection": build_connection_section(connection_name),
         "source": {
             "sql_file": config_raw["source"]["sql_file"],
             "sql_sha256": _sha256_text(sql_text),

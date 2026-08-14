@@ -3,17 +3,46 @@
 Ninguna de las dos funciones de escritura decide reglas de negocio -- solo
 serializan las estadísticas ya acumuladas por `pipeline.py` en las
 estructuras exactas pedidas por el incremento de implementación.
+
+Desde Sprint 9.6 (Export Engine mínimo), las piezas ya demostradas idénticas
+entre Drills y Bypass viven en `src.export.engine.manifest` -- ver ese
+fichero para el detalle de qué se movió y por qué. Este fichero conserva
+`RunStats` (con los campos de extensión propios de Drills: `reference_*`/
+`entities_*`/`dates_*`), `build_validation_report`/`build_export_manifest`
+(con las secciones `reference`/`entities`/`dates` y la trazabilidad extendida
+que Bypass todavía no tiene), y los re-exports necesarios para que
+`pipeline.py` no cambie ni un import.
 """
 from __future__ import annotations
 
-import hashlib
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Sequence
 
 import yaml
+
+from src.export.engine.manifest import (
+    PROTOTYPE_VERSION,
+    BaseRunStats,
+    build_connection_section,
+    build_counts_section,
+    build_output_section,
+    build_query_filters_section,
+    build_run_section,
+    determine_status as _engine_determine_status,
+    git_commit as _git_commit,
+    sha256_file as _sha256_file,
+    sha256_text as _sha256_text,
+    write_text_atomic,
+    write_yaml_atomic,
+)
+
+__all__ = [
+    "RunStats", "build_validation_report", "write_validation_report",
+    "build_query_filters_section", "build_export_manifest", "write_export_manifest",
+    "write_yaml_atomic", "write_text_atomic", "determine_status",
+]
 
 
 def _unfreeze(value: Any) -> Any:
@@ -31,32 +60,17 @@ def _unfreeze(value: Any) -> Any:
         return [_unfreeze(v) for v in value]
     return value
 
-PROTOTYPE_VERSION = "0.1.0-prototype"
-
-SUCCESS = "SUCCESS"
-SUCCESS_WITH_WARNINGS = "SUCCESS_WITH_WARNINGS"
-FAILED_VALIDATION = "FAILED_VALIDATION"
-FAILED_EXECUTION = "FAILED_EXECUTION"
-
 
 @dataclass
-class RunStats:
-    run_id: str
-    timestamp: str
-    mode: str
-    connection_name: str
-
-    rows_read: int = 0
-    rows_transformed: int = 0
-    rows_exported: int = 0
-    rows_excluded: int = 0
-    warnings: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
+class RunStats(BaseRunStats):
+    """Extiende `BaseRunStats` (Engine) con los contadores propios de
+    Drills -- ninguno de estos campos aplica a Bypass (ver
+    `bypass/manifest.py::RunStats`, que extiende la misma base con SUS
+    propios campos)."""
 
     reference_valid: int = 0
     reference_invalid: int = 0
     missing_typology: int = 0
-    missing_historical_origin_id: int = 0
     missing_starting_date: int = 0
     duplicate_references: int = 0
 
@@ -71,180 +85,53 @@ class RunStats:
     dates_empty: int = 0
     dates_hora_missing_or_invalid: int = 0
 
-    output_path: str = ""
-    output_encoding: str = ""
-    output_bom: bool = False
-    output_delimiter: str = ""
-    output_line_terminator: str = ""
-    output_column_count: int = 0
-    output_columns: list[str] = field(default_factory=list)
-
-
-def _sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _git_commit() -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5, check=False,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return None
-
-
-def write_yaml_atomic(data: dict, path: Path) -> None:
-    """Escritura atómica genérica (temporal + `os.replace`) reutilizada por
-    `validation_report.yaml`, `export_manifest.yaml` y `comparison_report.yaml`."""
-    import os
-    import tempfile
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
-        os.replace(tmp_path, path)
-    except BaseException:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
-
-
-def write_text_atomic(text: str, path: Path) -> None:
-    """Escritura atómica de texto plano (temporal + `os.replace`), mismo
-    patrón que `write_yaml_atomic` -- usada por `generated_query.sql`
-    (Query Engine v0.1). Nunca escribe sobre `sql/source_queries/`: `path`
-    siempre vive bajo el directorio de la ejecución (`outputs/...`)."""
-    import os
-    import tempfile
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp_path, path)
-    except BaseException:
-        if tmp_path.exists():
-            tmp_path.unlink()
-        raise
-
 
 def determine_status(stats: RunStats) -> tuple[str, list[str], list[str]]:
-    """Determina `status.result` a partir de las estadísticas acumuladas.
-
-    `FAILED_EXECUTION` lo decide `pipeline.py` directamente (una excepción
-    no controlada) -- esta función solo distingue entre éxito limpio, éxito
-    con warnings, y fallo de validación (post-escritura)."""
-    blocking = list(stats.errors)
-    warnings = list(stats.warnings)
-    if blocking:
-        return FAILED_VALIDATION, blocking, warnings
-    if warnings:
-        return SUCCESS_WITH_WARNINGS, blocking, warnings
-    return SUCCESS, blocking, warnings
+    """Determina `status.result` a partir de las estadísticas acumuladas --
+    delega en `engine.manifest.determine_status` (3 estados: éxito limpio,
+    éxito con warnings, fallo de validación). `FAILED_EXECUTION` lo decide
+    `pipeline.py` directamente (una excepción no controlada)."""
+    return _engine_determine_status(stats.errors, stats.warnings)
 
 
 def build_validation_report(stats: RunStats) -> dict:
     result, blocking_errors, warnings = determine_status(stats)
-    return {
-        "run": {
-            "run_id": stats.run_id,
-            "timestamp": stats.timestamp,
-            "mode": stats.mode,
-            "connection_name": stats.connection_name,
-            "migration_object": "Drills",
-            "prototype_status": "review_only",
-        },
-        "counts": {
-            "rows_read": stats.rows_read,
-            "rows_transformed": stats.rows_transformed,
-            "rows_exported": stats.rows_exported,
-            "rows_excluded": stats.rows_excluded,
-            "warnings": len(stats.warnings),
-            "errors": len(stats.errors),
-        },
-        "reference": {
-            "valid": stats.reference_valid,
-            "invalid": stats.reference_invalid,
-            "missing_typology": stats.missing_typology,
-            "missing_historical_origin_id": stats.missing_historical_origin_id,
-            "missing_starting_date": stats.missing_starting_date,
-            "duplicate_references": stats.duplicate_references,
-        },
-        "entities": {
-            "resolved": stats.entities_resolved,
-            "do_not_migrate": stats.entities_do_not_migrate,
-            "unresolved": stats.entities_unresolved,
-            "conflicting": stats.entities_conflicting,
-            "empty": stats.entities_empty,
-        },
-        "dates": {
-            "valid": stats.dates_valid,
-            "invalid": stats.dates_invalid,
-            "empty": stats.dates_empty,
-            "hora_missing_or_invalid": stats.dates_hora_missing_or_invalid,
-        },
-        "output": {
-            "path": stats.output_path,
-            "encoding": stats.output_encoding,
-            "bom": stats.output_bom,
-            "delimiter": stats.output_delimiter,
-            "line_terminator": stats.output_line_terminator,
-            "column_count": stats.output_column_count,
-            "columns": stats.output_columns,
-        },
-        "status": {
-            "result": result,
-            "blocking_errors": blocking_errors,
-            "warnings": warnings,
-        },
+    report: dict[str, Any] = {"run": build_run_section(stats, migration_object="Drills")}
+    report["counts"] = build_counts_section(stats)
+    report["reference"] = {
+        "valid": stats.reference_valid,
+        "invalid": stats.reference_invalid,
+        "missing_typology": stats.missing_typology,
+        "missing_historical_origin_id": stats.missing_historical_origin_id,
+        "missing_starting_date": stats.missing_starting_date,
+        "duplicate_references": stats.duplicate_references,
     }
+    report["entities"] = {
+        "resolved": stats.entities_resolved,
+        "do_not_migrate": stats.entities_do_not_migrate,
+        "unresolved": stats.entities_unresolved,
+        "conflicting": stats.entities_conflicting,
+        "empty": stats.entities_empty,
+    }
+    report["dates"] = {
+        "valid": stats.dates_valid,
+        "invalid": stats.dates_invalid,
+        "empty": stats.dates_empty,
+        "hora_missing_or_invalid": stats.dates_hora_missing_or_invalid,
+    }
+    report["output"] = build_output_section(stats)
+    report["status"] = {
+        "result": result,
+        "blocking_errors": blocking_errors,
+        "warnings": warnings,
+    }
+    return report
 
 
 def write_validation_report(stats: RunStats, path: Path) -> dict:
     report = build_validation_report(stats)
     write_yaml_atomic(report, path)
     return report
-
-
-def build_query_filters_section(
-    *,
-    compiled_filters: Sequence[Any],
-    source_sql_sha256: str,
-    generated_sql_file: str | None,
-    generated_sql_sha256: str | None,
-) -> dict:
-    """Sección `query_filters` de `export_manifest.yaml` (Query Engine v0.1).
-
-    `compiled_filters` son objetos `CompiledFilter` (o cualquier objeto con
-    una propiedad `manifest_entry` -- se evita importar `src.query` aquí
-    para no crear un acoplamiento circular entre `src.export` y
-    `src.query`; el llamador ya conoce el tipo real). Nunca incluye el
-    fragmento SQL, los nombres de parámetro ni ningún valor de conexión --
-    solo `field`/`operator`/`value` por filtro, tal como se pide en el
-    incremento.
-    """
-    expressions = [cf.manifest_entry for cf in compiled_filters]
-    return {
-        "applied": bool(compiled_filters),
-        "count": len(expressions),
-        "expressions": expressions,
-        "generated_sql_file": generated_sql_file,
-        "generated_sql_sha256": generated_sql_sha256,
-        "source_sql_sha256": source_sql_sha256,
-    }
 
 
 def build_export_manifest(
@@ -287,10 +174,7 @@ def build_export_manifest(
         "prototype_version": PROTOTYPE_VERSION,
         "prototype_status": "review_only",
         "mode": mode,
-        "connection": {
-            "name": connection_name,
-            "note": "Sin credenciales -- ver config/databases.yaml y .env (no incluidos aquí).",
-        },
+        "connection": build_connection_section(connection_name),
         "source": {
             "sql_file": "sql/source_queries/Simulacros/SQLQuery - DATASET SIMULACRO.sql",
             "sql_sha256": sql_sha256,

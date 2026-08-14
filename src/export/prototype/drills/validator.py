@@ -6,14 +6,23 @@ Separadas en dos momentos, tal como exige la Fase 8 del incremento:
 - `validate_output_csv`: sobre el fichero ya escrito, reabriéndolo de forma
   independiente (no reutiliza el DataFrame en memoria) para detectar
   problemas de la propia escritura (encoding, BOM, columnas, filas).
+
+Desde Sprint 9.6 (Export Engine mínimo), el núcleo de `validate_output_csv`
+(fichero existe, decodifica, parsea CSV, cabecera coincide) delega en
+`src.export.engine.validator.validate_csv_structure` -- esta función añade
+sus propias comprobaciones de negocio (BOM, `expected_row_count`, columnas
+por fila, patrón `Reference`, re-lectura con pandas) sobre el resultado del
+núcleo, ninguna de las cuales aplica a Bypass (que no tiene columna
+`Reference` ni comprobación de BOM en su `validate_output_csv`).
 """
 from __future__ import annotations
 
-import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
+
+from src.export.engine.validator import validate_csv_structure
 
 from .config import DrillsExportConfig
 from .transformations import REFERENCE_PATTERN
@@ -112,35 +121,19 @@ def validate_output_csv(
     if not raw_bytes.startswith(b"\xef\xbb\xbf") and config.output.bom:
         result.issues.append("El fichero no contiene BOM UTF-8 pero la configuración declara bom=true.")
 
-    try:
-        text = raw_bytes.decode(config.output.encoding)
-    except UnicodeDecodeError as exc:
-        result.issues.append(f"El fichero no es {config.output.encoding} válido: {exc}")
+    core = validate_csv_structure(path, expected_columns, config.output)
+    result.issues.extend(core.issues)
+    if not core.columns:
+        # Decode fallido o fichero vacío -- `validate_csv_structure` ya
+        # devolvió el issue correspondiente; misma parada temprana que
+        # antes de Sprint 9.6 (nunca se intentan las comprobaciones de
+        # negocio de abajo sin una cabecera parseada).
         return result
 
-    try:
-        raw_bytes.decode("ascii", errors="strict")
-    except UnicodeDecodeError:
-        pass  # esperado -- contenido con acentos/ñ es válido en UTF-8, esto no es un error.
-
-    reader = csv.reader(text.splitlines(), delimiter=config.output.delimiter, quotechar='"')
-    rows = list(reader)
-    if not rows:
-        result.issues.append("El fichero de salida está vacío (sin cabecera).")
-        return result
-
-    header = rows[0]
-    data_rows = rows[1:]
-
-    result.columns = header
-    result.column_count = len(header)
-    result.row_count = len(data_rows)
-
-    if header != expected_columns:
-        result.issues.append(
-            f"La cabecera no coincide con el orden esperado.\n"
-            f"  esperado: {expected_columns}\n  obtenido: {header}"
-        )
+    result.columns = core.columns
+    result.column_count = core.column_count
+    result.row_count = core.row_count
+    data_rows = core.data_rows
 
     if len(data_rows) != expected_row_count:
         result.issues.append(
@@ -148,15 +141,15 @@ def validate_output_csv(
             f"esperado ({expected_row_count})."
         )
 
-    bad_column_count_rows = [i for i, r in enumerate(data_rows) if len(r) != len(header)]
+    bad_column_count_rows = [i for i, r in enumerate(data_rows) if len(r) != len(core.columns)]
     if bad_column_count_rows:
         result.issues.append(
             f"{len(bad_column_count_rows)} fila(s) no tienen el mismo número "
             f"de columnas que la cabecera (primeras: {bad_column_count_rows[:5]})."
         )
 
-    if "Reference" in header:
-        ref_idx = header.index("Reference")
+    if "Reference" in core.columns:
+        ref_idx = core.columns.index("Reference")
         for r in data_rows:
             if len(r) <= ref_idx:
                 continue

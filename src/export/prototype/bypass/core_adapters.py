@@ -1,20 +1,26 @@
 """Adaptadores de Bypass para el Framework Core v1 (Sprint 9.4).
 
-DUPLICATED_FROM_DRILLS (estructura, deliberadamente) --
-`drills.core_adapters` fue el primer caso real; este es el segundo. Solo
-dos etapas (`query`, `transform_and_export`) -- ni `canonicalize`
+Solo dos etapas (`query`, `transform_and_export`) -- ni `canonicalize`
 (pass-through puro en Drills, sin valor demostrado todavía) ni
-`evidence` (no implementada para Bypass en este incremento, ver
+`evidence` (no implementada para Bypass, ver
 docs/07-developer-guide/bypass-module.md § 3) se declaran aquí. Vive en
 la capa de Plugin (`src/export/prototype/bypass/`), nunca en
-`src/core/` -- mismo principio de dirección de dependencia que Drills."""
+`src/core/` -- mismo principio de dirección de dependencia que Drills.
+
+La etapa `query` ya NO es DUPLICATED_FROM_DRILLS desde Sprint 9.6: usa
+`GenericQueryStage` (Export Engine, `src/export/engine/query_stage.py`),
+el mismo bloque reutilizable que Drills -- ver
+`reports/executions/2026-08-14/Informe-Minimal-Export-Engine-Extraction-EMF.md`.
+`transform_and_export` sigue envolviendo `pipeline.run()` completo, deuda
+técnica conocida y deliberadamente NO extraída todavía (Sprint 9.5.1: sin
+una segunda forma real distinta a Drills, extraerla ahora sería diseñar sin
+evidencia)."""
 from __future__ import annotations
 
 import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from src.config import PROJECT_ROOT
 from src.core.contracts import (
@@ -27,8 +33,8 @@ from src.core.contracts import (
     StageStatus,
 )
 from src.core.registry import StageRegistry
+from src.export.engine.query_stage import GenericQueryStage, QueryStageSpec
 from src.query.catalog import BYPASS_FILTER_CATALOG
-from src.query.validator import compile_filter_tokens
 
 from .config import load_bypass_config
 from .extractor import ExtractionResult, extract_bypass
@@ -52,33 +58,17 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class BypassQueryStage:
+def _build_bypass_query_stage() -> GenericQueryStage:
     """Envuelve `extract_bypass()` sin ningún cambio de comportamiento --
-    mismo patrón que `DrillsQueryStage`."""
-
-    name = STAGE_QUERY
-
-    def execute(self, context: ExecutionContext, stage_input: Any) -> StageResult:
-        start = _now()
-        request = context.request
-
-        config = load_bypass_config()
-        context.state["bypass_config"] = config
-
-        compiled_filters = ()
-        if request.filters:
-            compiled_filters = compile_filter_tokens(request.filters, BYPASS_FILTER_CATALOG)
-
-        extraction = extract_bypass(
-            config, mode=request.mode, limit=request.limit, compiled_filters=compiled_filters,
-        )
-
-        metrics = StageMetrics(
-            stage=self.name, start_time=start,
-            input_record_count=extraction.rows_available_before_truncation,
-            output_record_count=len(extraction.dataframe),
-        )
-        return StageResult(stage=self.name, status=StageStatus.SUCCESS, output=extraction, metrics=metrics)
+    Sprint 9.6: mismo `GenericQueryStage` (Export Engine) que Drills, solo
+    cambian los componentes que Bypass aporta (`QueryStageSpec`)."""
+    return GenericQueryStage(QueryStageSpec(
+        name=STAGE_QUERY,
+        config_loader=load_bypass_config,
+        state_key="bypass_config",
+        filter_catalog=BYPASS_FILTER_CATALOG,
+        extract_fn=extract_bypass,
+    ))
 
 
 class BypassTransformExportStage:
@@ -129,7 +119,7 @@ class BypassTransformExportStage:
 
 
 def register_bypass_stages(registry: StageRegistry, *, overwrite: bool = False) -> None:
-    registry.register(STAGE_QUERY, BypassQueryStage(), overwrite=overwrite)
+    registry.register(STAGE_QUERY, _build_bypass_query_stage(), overwrite=overwrite)
     registry.register(STAGE_TRANSFORM_AND_EXPORT, BypassTransformExportStage(), overwrite=overwrite)
 
 

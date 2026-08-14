@@ -9,7 +9,10 @@ Cuatro etapas registradas, deliberadamente no ocho (Fase 5 permite elegir
 "el mínimo corte útil" cuando separar más implica alto riesgo):
 
 - `query`: extracción SQL -- ya estaba limpiamente separada en
-  `extractor.py`; se envuelve sin ningún cambio de comportamiento.
+  `extractor.py`; se envuelve sin ningún cambio de comportamiento. Desde
+  Sprint 9.6 usa `GenericQueryStage` (Export Engine,
+  `src/export/engine/query_stage.py`), el mismo bloque que Bypass -- ver
+  `reports/executions/2026-08-14/Informe-Minimal-Export-Engine-Extraction-EMF.md`.
 - `canonicalize`: seam mínimo hacia el futuro CDM (`CanonicalBatch`,
   Fase 6 Opción C) -- hoy es un paso de paso (pass-through) documentado,
   no reescribe ninguna transformación de Drills.
@@ -51,8 +54,8 @@ from src.core.workspace_manifest import WorkspaceManifestLoader
 from src.evidence.collector import load_run
 from src.evidence.models import EvidenceSourceError
 from src.evidence.workbook import build_workbook, save_workbook
+from src.export.engine.query_stage import GenericQueryStage, QueryStageSpec
 from src.query.catalog import DRILLS_FILTER_CATALOG
-from src.query.validator import compile_filter_tokens
 
 from .config import load_drills_config
 from .extractor import ExtractionResult, extract_drills
@@ -83,35 +86,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class DrillsQueryStage:
-    """Envuelve `extract_drills()` sin ningún cambio de comportamiento."""
-
-    name = STAGE_QUERY
-
-    def execute(self, context: ExecutionContext, stage_input: Any) -> StageResult:
-        start = _now()
-        request = context.request
-
-        config = load_drills_config()
-        context.state["drills_config"] = config
-
-        compiled_filters = ()
-        if request.filters:
-            compiled_filters = compile_filter_tokens(request.filters, DRILLS_FILTER_CATALOG)
-
-        # Errores técnicos (DatabaseError, QueryEngineError) se propagan tal
-        # cual -- no se capturan aquí (Fase 8).
-        extraction = extract_drills(
-            config, mode=request.mode, limit=request.limit, compiled_filters=compiled_filters,
-        )
-
-        metrics = StageMetrics(
-            stage=self.name,
-            start_time=start,
-            input_record_count=extraction.rows_available_before_truncation,
-            output_record_count=len(extraction.dataframe),
-        )
-        return StageResult(stage=self.name, status=StageStatus.SUCCESS, output=extraction, metrics=metrics)
+def _build_drills_query_stage() -> GenericQueryStage:
+    """Envuelve `extract_drills()` sin ningún cambio de comportamiento --
+    Sprint 9.6: el lifecycle (cargar config -> guardar en `context.state` ->
+    compilar filtros -> extraer -> `StageResult`) vive ahora en
+    `GenericQueryStage` (Export Engine), ya demostrado idéntico entre Drills
+    y Bypass. Los errores técnicos (`DatabaseError`, `QueryEngineError`)
+    siguen propagándose tal cual -- no se capturan aquí (Fase 8)."""
+    return GenericQueryStage(QueryStageSpec(
+        name=STAGE_QUERY,
+        config_loader=load_drills_config,
+        state_key="drills_config",
+        filter_catalog=DRILLS_FILTER_CATALOG,
+        extract_fn=extract_drills,
+    ))
 
 
 class DrillsCanonicalizeStage:
@@ -255,7 +243,7 @@ def register_drills_stages(registry: StageRegistry, *, overwrite: bool = False) 
     clase de `src/core/` importa nada de este módulo; es este módulo quien
     importa del Core y se registra en él (dirección de dependencia
     correcta, ver `architecture-overview.md` § 1)."""
-    registry.register(STAGE_QUERY, DrillsQueryStage(), overwrite=overwrite)
+    registry.register(STAGE_QUERY, _build_drills_query_stage(), overwrite=overwrite)
     registry.register(STAGE_CANONICALIZE, DrillsCanonicalizeStage(), overwrite=overwrite)
     registry.register(STAGE_TRANSFORM_AND_EXPORT, DrillsTransformExportStage(), overwrite=overwrite)
     registry.register(STAGE_EVIDENCE, DrillsEvidenceStage(), overwrite=overwrite)

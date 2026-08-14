@@ -21,13 +21,17 @@ asumido por el nombre:
 Solo `nullcontrol_passthrough` es nueva -- ningún campo de Drills usa
 exactamente este patrón (null -> literal, no vacío -> passthrough sin
 lookup).
+
+`_is_missing`: hasta Sprint 9.6 era una copia local de la de
+`drills.transformations` (DUPLICATED_FROM_DRILLS, ~10 líneas) -- movida a
+`src.export.engine.values.is_missing` (Export Engine mínimo, Sprint 9.6).
+Hallazgo al mover el código, no antes: esta copia OMITÍA el paso
+`_to_native` que sí tiene la de Drills -- ver `engine/values.py` para el
+análisis de por qué no cambia ningún resultado observable en este proyecto.
 """
 from __future__ import annotations
 
-import math
-
-import pandas as pd
-
+from src.export.engine.values import is_missing as _is_missing
 from src.export.prototype.drills.transformations import (
     LookupResult,
     resolve_letter as resolve_lookup,
@@ -35,27 +39,6 @@ from src.export.prototype.drills.transformations import (
 )
 
 __all__ = ["LookupResult", "resolve_lookup", "to_historical_id", "nullcontrol_passthrough"]
-
-
-def _is_missing(value) -> bool:
-    # DUPLICATED_FROM_DRILLS (deliberado): idéntica a la función privada
-    # `_is_missing` de `drills.transformations` -- no se importa porque
-    # es privada de ese módulo (el guion bajo es una frontera real, no
-    # solo convención). Duplicación mínima (10 líneas), registrada como
-    # tal -- ver docs/07-developer-guide/bypass-module.md § 6. Candidata
-    # a moverse a un lugar compartido si aparece una tercera necesidad.
-    if value is None:
-        return True
-    if isinstance(value, float) and math.isnan(value):
-        return True
-    if isinstance(value, str) and value.strip() == "":
-        return True
-    try:
-        if pd.isna(value):
-            return True
-    except (TypeError, ValueError):
-        pass
-    return False
 
 
 def nullcontrol_passthrough(value, null_default: str) -> LookupResult:

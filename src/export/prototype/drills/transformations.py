@@ -15,6 +15,9 @@ from datetime import date, datetime
 import numpy as np
 import pandas as pd
 
+from src.export.engine.values import is_missing as _is_missing
+from src.export.engine.values import to_native as _to_native
+
 # Patrón de validación estructural de Reference -- ver Fase 8 del incremento
 # de implementación. Se usa SOLO para validar, nunca para reconstruir o
 # corregir una Reference defectuosa.
@@ -29,32 +32,14 @@ _DATE_FORMATS = (
     "%Y-%m-%d",
 )
 
-
-def _to_native(value):
-    """Convierte un escalar numpy (`numpy.int64`, `numpy.float64`...) al
-    tipo Python nativo equivalente. pandas devuelve escalares numpy al leer
-    columnas SQL bigint/numeric -- sin esto, `isinstance(value, int)`
-    devuelve `False` para un `numpy.int64` y las comprobaciones de tipo de
-    abajo se saltarían en silencio."""
-    if isinstance(value, np.generic):
-        return value.item()
-    return value
-
-
-def _is_missing(value) -> bool:
-    value = _to_native(value)
-    if value is None:
-        return True
-    if isinstance(value, float) and math.isnan(value):
-        return True
-    if isinstance(value, str) and value.strip() == "":
-        return True
-    try:
-        if pd.isna(value):
-            return True
-    except (TypeError, ValueError):
-        pass
-    return False
+# `_to_native`/`_is_missing`: movidas a `src.export.engine.values` en Sprint
+# 9.6 (Export Engine mínimo) -- eran idénticas carácter a carácter a las de
+# `bypass/transformations.py` salvo que la copia de Bypass omitía el paso
+# `_to_native` (hallazgo propio de Sprint 9.5.1/9.6, no cambia ningún
+# resultado observable para los tipos reales usados por este proyecto -- ver
+# docstring de `engine/values.py`). Se conservan aquí como alias privados
+# (`_to_native`/`_is_missing`) para no tocar ninguna de sus 4 llamadas
+# internas en este fichero.
 
 
 # --------------------------------------------------------------------------

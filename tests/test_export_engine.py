@@ -1,0 +1,523 @@
+"""Tests del Export Engine mínimo (Sprint 9.6) -- `src/export/engine/`.
+
+Dos frentes:
+1. Unit tests de cada pieza extraída, aislados de Drills/Bypass (fixtures
+   propias de este fichero, nunca SQL real, nunca `config/exports/*.yaml`
+   reales salvo donde se indica explícitamente).
+2. Tests arquitectónicos (Fase 14 del encargo de Sprint 9.6): impiden que el
+   Engine vuelva a acoplarse a un módulo concreto, o que un módulo concreto
+   dependa de otro módulo hermano en vez del Engine.
+
+Ejecutar con: pytest tests/test_export_engine.py -v
+"""
+from __future__ import annotations
+
+import ast
+import sys
+import textwrap
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
+from src.config import PROJECT_ROOT
+from src.core.contracts import ExecutionContext, ExecutionRequest, StageStatus
+from src.export.engine.config import FieldSpec, OutputSpec, SourceSpec, load_export_config
+from src.export.engine.extractor import (
+    DEFAULT_SAMPLE_LIMIT,
+    MODE_FULL,
+    MODE_SAMPLE,
+    ExtractionResult,
+    extract_via_sql,
+)
+from src.export.engine.manifest import (
+    FAILED_VALIDATION,
+    SUCCESS,
+    SUCCESS_WITH_WARNINGS,
+    BaseRunStats,
+    build_connection_section,
+    build_counts_section,
+    build_output_section,
+    build_query_filters_section,
+    build_run_section,
+    determine_status,
+)
+from src.export.engine.query_stage import GenericQueryStage, QueryStageSpec
+from src.export.engine.validator import validate_csv_structure
+from src.export.engine.values import is_missing, to_native
+from src.query.catalog import DRILLS_FILTER_CATALOG
+
+
+# ---------------------------------------------------------------------------
+# config.py
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class _FakeExportConfig:
+    object_id: str
+    module: str
+    migration_object: str
+    prototype_status: str
+    source: SourceSpec
+    output: OutputSpec
+    invalid_row_policy: str
+    reference_data: dict[str, Any]
+    fields: tuple[FieldSpec, ...]
+    excluded_columns: tuple[dict[str, Any], ...]
+    raw: dict[str, Any] = field(repr=False)
+
+
+def _write_minimal_export_yaml(tmp_path: Path, *, sql_relpath: str) -> Path:
+    sql_path = PROJECT_ROOT / sql_relpath
+    sql_path.parent.mkdir(parents=True, exist_ok=True)
+    if not sql_path.is_file():
+        sql_path.write_text("SELECT 1 AS Id", encoding="utf-8")
+    yaml_path = tmp_path / "fake_export.yaml"
+    yaml_path.write_text(textwrap.dedent(f"""\
+        object_id: fake
+        module: fake_module
+        migration_object: Fake
+        prototype_status: review_only
+        source:
+          connection: prevencion
+          sql_file: "{sql_relpath}"
+          max_rows: 100
+        output:
+          filename: fake.csv
+          encoding: utf-8
+          bom: false
+          delimiter: "\\t"
+          quoting: minimal
+          line_terminator: "\\r\\n"
+          include_header: true
+        invalid_row_policy: report_and_exclude_from_csv
+        reference_data: {{}}
+        fields:
+          - source: "Id"
+            target: "Id"
+            required: true
+            transformation: passthrough
+            data_type: string
+            date_format: null
+            default: null
+            mapping: null
+            validation: required_non_null
+            evidence_id: "test:fake.id"
+        """), encoding="utf-8")
+    return yaml_path, sql_path
+
+
+def test_load_export_config_construye_el_contenedor_generico(tmp_path):
+    yaml_path, sql_path = _write_minimal_export_yaml(tmp_path, sql_relpath="sql/source_queries/_engine_test_fixture.sql")
+    try:
+        config = load_export_config(str(yaml_path), _FakeExportConfig)
+        assert isinstance(config, _FakeExportConfig)
+        assert config.object_id == "fake"
+        assert config.source.connection == "prevencion"
+        assert config.fields[0].target == "Id"
+        assert config.excluded_columns == ()
+    finally:
+        sql_path.unlink(missing_ok=True)
+
+
+def test_load_export_config_lanza_si_faltan_claves_obligatorias(tmp_path):
+    yaml_path = tmp_path / "incompleto.yaml"
+    yaml_path.write_text("object_id: fake\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="claves obligatorias"):
+        load_export_config(str(yaml_path), _FakeExportConfig)
+
+
+def test_drills_y_bypass_usan_las_mismas_dataclasses_de_config():
+    """No son clases equivalentes por casualidad -- son el MISMO objeto,
+    importado del Engine (Sprint 9.6)."""
+    from src.export.prototype.bypass.config import FieldSpec as BypassFieldSpec
+    from src.export.prototype.bypass.config import OutputSpec as BypassOutputSpec
+    from src.export.prototype.drills.config import FieldSpec as DrillsFieldSpec
+    from src.export.prototype.drills.config import OutputSpec as DrillsOutputSpec
+
+    assert DrillsFieldSpec is BypassFieldSpec is FieldSpec
+    assert DrillsOutputSpec is BypassOutputSpec is OutputSpec
+
+
+# ---------------------------------------------------------------------------
+# extractor.py
+# ---------------------------------------------------------------------------
+
+def _fake_source(tmp_path: Path, sql_text: str = "SELECT 1") -> SourceSpec:
+    sql_relpath = f"sql/source_queries/_engine_test_extractor_{tmp_path.name}.sql"
+    sql_path = PROJECT_ROOT / sql_relpath
+    sql_path.parent.mkdir(parents=True, exist_ok=True)
+    sql_path.write_text(sql_text, encoding="utf-8")
+    return SourceSpec(connection="prevencion", sql_file=sql_relpath, max_rows=1000)
+
+
+def test_extract_via_sql_sin_sort_column_conserva_el_orden_de_origen(tmp_path):
+    source = _fake_source(tmp_path)
+    df = pd.DataFrame({"Id": [3, 1, 2]})
+    try:
+        result = extract_via_sql(source, query_runner=lambda *a, **k: df.copy(), mode=MODE_SAMPLE, limit=10)
+        assert list(result.dataframe["Id"]) == [3, 1, 2]  # sin reordenar
+        assert result.limit == 10
+        assert result.rows_available_before_truncation == 3
+    finally:
+        source.sql_path.unlink(missing_ok=True)
+
+
+def test_extract_via_sql_con_sort_column_ordena_antes_de_truncar(tmp_path):
+    source = _fake_source(tmp_path)
+    df = pd.DataFrame({"Id": [3, 1, 2], "Fecha": ["2020-01-03", "2020-01-01", "2020-01-02"]})
+    try:
+        result = extract_via_sql(
+            source, query_runner=lambda *a, **k: df.copy(), mode=MODE_SAMPLE, limit=2, sort_column="Fecha",
+        )
+        assert list(result.dataframe["Id"]) == [1, 2]  # ordenado por Fecha asc, truncado a 2
+    finally:
+        source.sql_path.unlink(missing_ok=True)
+
+
+def test_extract_via_sql_modo_full_no_trunca_ni_ordena(tmp_path):
+    source = _fake_source(tmp_path)
+    df = pd.DataFrame({"Id": [3, 1, 2]})
+    try:
+        result = extract_via_sql(
+            source, query_runner=lambda *a, **k: df.copy(), mode=MODE_FULL, sort_column="Id",
+        )
+        assert result.limit is None
+        assert list(result.dataframe["Id"]) == [3, 1, 2]
+    finally:
+        source.sql_path.unlink(missing_ok=True)
+
+
+def test_extract_via_sql_rechaza_limit_no_positivo_en_sample(tmp_path):
+    source = _fake_source(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="positivo"):
+            extract_via_sql(source, query_runner=lambda *a, **k: pd.DataFrame(), mode=MODE_SAMPLE, limit=0)
+    finally:
+        source.sql_path.unlink(missing_ok=True)
+
+
+def test_extract_via_sql_query_runner_recibe_params_none_sin_filtros(tmp_path):
+    source = _fake_source(tmp_path)
+    captured = {}
+
+    def _runner(sql_text, *, connection, params, source_file):
+        captured["params"] = params
+        return pd.DataFrame({"Id": [1]})
+
+    try:
+        extract_via_sql(source, query_runner=_runner, mode=MODE_SAMPLE, limit=5)
+        assert captured["params"] is None
+    finally:
+        source.sql_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# values.py
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("value", [None, float("nan"), np.float64("nan"), "", "   ", pd.NA])
+def test_is_missing_reconoce_todas_las_formas_de_ausencia(value):
+    assert is_missing(value) is True
+
+
+@pytest.mark.parametrize("value", [0, 1, "x", "0", np.int64(42), np.float64(3.14), False])
+def test_is_missing_no_confunde_valores_reales_con_ausencia(value):
+    assert is_missing(value) is False
+
+
+def test_to_native_convierte_escalares_numpy():
+    assert isinstance(to_native(np.int64(7)), int)
+    assert isinstance(to_native(np.float64(1.5)), float)
+    assert to_native("x") == "x"  # no numpy -- passthrough
+
+
+# ---------------------------------------------------------------------------
+# manifest.py
+# ---------------------------------------------------------------------------
+
+def _stats(**overrides) -> BaseRunStats:
+    base = dict(run_id="r1", timestamp="20260101T000000Z", mode="sample", connection_name="prevencion")
+    base.update(overrides)
+    return BaseRunStats(**base)
+
+
+def test_determine_status_sin_errores_ni_warnings_es_success():
+    result, blocking, warnings = determine_status([], [])
+    assert result == SUCCESS
+    assert blocking == []
+    assert warnings == []
+
+
+def test_determine_status_con_warnings_sin_errores_es_success_with_warnings():
+    result, blocking, warnings = determine_status([], ["algo raro"])
+    assert result == SUCCESS_WITH_WARNINGS
+
+
+def test_determine_status_con_errores_es_failed_validation_aunque_haya_warnings():
+    result, blocking, warnings = determine_status(["error bloqueante"], ["warning"])
+    assert result == FAILED_VALIDATION
+    assert blocking == ["error bloqueante"]
+
+
+def test_build_run_section_usa_migration_object_del_llamador():
+    stats = _stats()
+    section = build_run_section(stats, migration_object="Fake")
+    assert section["migration_object"] == "Fake"
+    assert section["prototype_status"] == "review_only"
+    assert section["run_id"] == "r1"
+
+
+def test_build_counts_y_output_section_reflejan_stats():
+    stats = _stats(rows_read=5, rows_exported=4, rows_excluded=1, warnings=["w"], errors=[])
+    counts = build_counts_section(stats)
+    assert counts == {
+        "rows_read": 5, "rows_transformed": 0, "rows_exported": 4,
+        "rows_excluded": 1, "warnings": 1, "errors": 0,
+    }
+    stats.output_columns = ["A", "B"]
+    stats.output_column_count = 2
+    output = build_output_section(stats)
+    assert output["columns"] == ["A", "B"]
+    assert output["column_count"] == 2
+
+
+def test_build_connection_section_nunca_incluye_credenciales():
+    section = build_connection_section("prevencion")
+    assert section["name"] == "prevencion"
+    assert "password" not in section["note"].lower() or "no incluidos" in section["note"].lower()
+
+
+def test_build_query_filters_section_sin_filtros():
+    section = build_query_filters_section(
+        compiled_filters=(), source_sql_sha256="abc", generated_sql_file=None, generated_sql_sha256=None,
+    )
+    assert section["applied"] is False
+    assert section["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# validator.py
+# ---------------------------------------------------------------------------
+
+_OUTPUT_SPEC = OutputSpec(
+    filename="fake.csv", encoding="utf-8", bom=False, delimiter="\t",
+    quoting="minimal", line_terminator="\r\n", include_header=True,
+)
+
+
+def test_validate_csv_structure_fichero_inexistente(tmp_path):
+    result = validate_csv_structure(tmp_path / "no_existe.csv", ["A", "B"], _OUTPUT_SPEC)
+    assert not result.is_valid
+    assert "no existe" in result.issues[0]
+
+
+def test_validate_csv_structure_fichero_vacio(tmp_path):
+    path = tmp_path / "vacio.csv"
+    path.write_bytes(b"")
+    result = validate_csv_structure(path, ["A", "B"], _OUTPUT_SPEC)
+    assert not result.is_valid
+    assert "vacío" in result.issues[0]
+
+
+def test_validate_csv_structure_cabecera_no_coincide(tmp_path):
+    path = tmp_path / "bad_header.csv"
+    path.write_bytes(b"A\tC\r\n1\t2\r\n")
+    result = validate_csv_structure(path, ["A", "B"], _OUTPUT_SPEC)
+    assert not result.is_valid
+    assert result.columns == ["A", "C"]
+
+
+def test_validate_csv_structure_exitoso(tmp_path):
+    path = tmp_path / "ok.csv"
+    path.write_bytes(b"A\tB\r\n1\t2\r\n3\t4\r\n")
+    result = validate_csv_structure(path, ["A", "B"], _OUTPUT_SPEC)
+    assert result.is_valid
+    assert result.row_count == 2
+    assert result.data_rows == [["1", "2"], ["3", "4"]]
+
+
+def test_bypass_validator_delega_en_engine_sin_cambiar_forma(tmp_path):
+    from src.export.prototype.bypass.validator import validate_output_csv
+
+    path = tmp_path / "bypass.csv"
+    path.write_bytes(b"A\tB\r\n1\t2\r\n")
+    result = validate_output_csv(path, ["A", "B"], _OUTPUT_SPEC)
+    assert result.is_valid
+    assert result.row_count == 1
+    assert result.columns == ["A", "B"]
+
+
+# ---------------------------------------------------------------------------
+# query_stage.py
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _FakeExtraction:
+    dataframe: pd.DataFrame
+    rows_available_before_truncation: int
+
+
+def test_generic_query_stage_ejecuta_lifecycle_completo():
+    calls = {"config_loader": 0, "extract_fn_args": None}
+
+    def _config_loader():
+        calls["config_loader"] += 1
+        return {"fake": "config"}
+
+    def _extract_fn(config, *, mode, limit, compiled_filters):
+        calls["extract_fn_args"] = (config, mode, limit, tuple(compiled_filters))
+        return _FakeExtraction(dataframe=pd.DataFrame({"Id": [1, 2]}), rows_available_before_truncation=2)
+
+    stage = GenericQueryStage(QueryStageSpec(
+        name="query", config_loader=_config_loader, state_key="fake_config",
+        filter_catalog=DRILLS_FILTER_CATALOG, extract_fn=_extract_fn,
+    ))
+
+    request = ExecutionRequest(project="acme", object_type="fake", mode="sample", limit=7)
+    context = ExecutionContext(
+        execution_id="e1", request=request, started_at=None, working_dir=PROJECT_ROOT,
+        output_dir=PROJECT_ROOT, logger=__import__("logging").getLogger("test"),
+    )
+    result = stage.execute(context, None)
+
+    assert result.status == StageStatus.SUCCESS
+    assert context.state["fake_config"] == {"fake": "config"}
+    assert calls["config_loader"] == 1
+    assert calls["extract_fn_args"][1] == "sample"
+    assert calls["extract_fn_args"][2] == 7
+    assert result.metrics.output_record_count == 2
+    assert result.metrics.input_record_count == 2
+
+
+def test_generic_query_stage_compila_filtros_del_request():
+    captured = {}
+
+    def _extract_fn(config, *, mode, limit, compiled_filters):
+        captured["filters"] = compiled_filters
+        return _FakeExtraction(dataframe=pd.DataFrame({"Id": [1]}), rows_available_before_truncation=1)
+
+    stage = GenericQueryStage(QueryStageSpec(
+        name="query", config_loader=lambda: None, state_key="k",
+        filter_catalog=DRILLS_FILTER_CATALOG, extract_fn=_extract_fn,
+    ))
+    request = ExecutionRequest(
+        project="acme", object_type="fake", mode="sample", limit=5,
+        filters=("historical_origin_id:eq:100",),
+    )
+    context = ExecutionContext(
+        execution_id="e2", request=request, started_at=None, working_dir=PROJECT_ROOT,
+        output_dir=PROJECT_ROOT, logger=__import__("logging").getLogger("test"),
+    )
+    stage.execute(context, None)
+    assert len(captured["filters"]) == 1
+    assert captured["filters"][0].field == "historical_origin_id"
+
+
+# ---------------------------------------------------------------------------
+# Tests arquitectónicos (Fase 14)
+# ---------------------------------------------------------------------------
+
+_ENGINE_DIR = PROJECT_ROOT / "src" / "export" / "engine"
+_ENGINE_FILES = sorted(p for p in _ENGINE_DIR.glob("*.py") if p.name != "__pycache__")
+
+
+def _imported_module_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                names.add(alias.name)
+    return names
+
+
+def test_engine_no_importa_drills_ni_bypass():
+    for path in _ENGINE_FILES:
+        imported = _imported_module_names(path)
+        offending = {m for m in imported if "export.prototype" in m}
+        assert not offending, f"{path.name} importa de src.export.prototype: {offending}"
+
+
+_MODULE_ID_LITERALS = {"drills", "bypass", "simulacros", "safety_meetings", "moc", "events", "eventos", "inspections", "inspecciones", "ops", "action_plans"}
+
+
+def _compares_against_module_literal(tree: ast.AST) -> list[str]:
+    """Busca comparaciones de CÓDIGO (nunca docstrings/comentarios, ya
+    excluidos por ser nodos `ast.Compare`, no texto plano) contra un literal
+    de string que sea un nombre de módulo conocido -- la señal concreta de
+    un `if module_id == "drills"` o equivalente."""
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            for operand in operands:
+                if isinstance(operand, ast.Constant) and isinstance(operand.value, str):
+                    if operand.value in _MODULE_ID_LITERALS:
+                        offenders.append(operand.value)
+    return offenders
+
+
+def test_engine_no_tiene_condicionales_por_module_id():
+    """Ningún fichero del Engine debe decidir comportamiento comparando
+    contra un nombre de módulo concreto -- la diferenciación siempre debe
+    llegar por inyección de dependencias (parámetros/funciones). Se analiza
+    el AST (no el texto crudo) para no confundir esto con menciones en
+    docstrings/comentarios, que sí son legítimas."""
+    for path in _ENGINE_FILES:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        offenders = _compares_against_module_literal(tree)
+        assert not offenders, f"{path.name} compara código contra {offenders} -- branching por módulo prohibido en el Engine"
+
+
+def test_drills_y_bypass_consumen_el_engine():
+    drills_files = [
+        PROJECT_ROOT / "src/export/prototype/drills/config.py",
+        PROJECT_ROOT / "src/export/prototype/drills/extractor.py",
+        PROJECT_ROOT / "src/export/prototype/drills/manifest.py",
+        PROJECT_ROOT / "src/export/prototype/drills/validator.py",
+        PROJECT_ROOT / "src/export/prototype/drills/core_adapters.py",
+    ]
+    bypass_files = [
+        PROJECT_ROOT / "src/export/prototype/bypass/config.py",
+        PROJECT_ROOT / "src/export/prototype/bypass/extractor.py",
+        PROJECT_ROOT / "src/export/prototype/bypass/manifest.py",
+        PROJECT_ROOT / "src/export/prototype/bypass/validator.py",
+        PROJECT_ROOT / "src/export/prototype/bypass/core_adapters.py",
+    ]
+    for path in drills_files + bypass_files:
+        imported = _imported_module_names(path)
+        assert any(m.startswith("src.export.engine") for m in imported), (
+            f"{path.relative_to(PROJECT_ROOT)} no importa nada de src.export.engine tras Sprint 9.6"
+        )
+
+
+def test_bypass_ya_no_importa_directamente_de_drills_para_utilidades_genericas():
+    """Antes de Sprint 9.6, `bypass/manifest.py` y `bypass/pipeline.py`
+    importaban `write_yaml_atomic`/`write_text_atomic`/`build_query_filters_section`
+    directamente de `drills/manifest.py` -- acoplamiento bypass -> drills
+    para utilidades ya genéricas. Tras mover esas piezas al Engine, ningún
+    fichero de `bypass/` debe importar de `drills/` salvo los casos
+    explícitamente documentados como reutilización intencional
+    (`exporter.write_csv`, `transformations.resolve_letter`/`to_historical_id`,
+    ambos con evidencia propia en sus docstrings, fuera de alcance de este
+    refactor)."""
+    allowed_drills_imports = {
+        "src.export.prototype.drills.exporter",
+        "src.export.prototype.drills.transformations",
+    }
+    for path in (PROJECT_ROOT / "src/export/prototype/bypass").glob("*.py"):
+        imported = _imported_module_names(path)
+        offending = {
+            m for m in imported
+            if m.startswith("src.export.prototype.drills") and m not in allowed_drills_imports
+        }
+        assert not offending, f"{path.name} todavía importa de drills fuera de lo permitido: {offending}"

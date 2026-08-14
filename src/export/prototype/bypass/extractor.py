@@ -1,59 +1,41 @@
 """Extracción SQL de solo lectura para bypass.By_Passes.
 
-DUPLICATED_FROM_DRILLS (estructura completa, deliberadamente): mismo
-patrón que `drills.extractor.extract_drills` -- no existe todavía un
-extractor genérico parametrizado por `ExportConfig` (ver
-docs/07-developer-guide/bypass-module.md § 6). Lo que SÍ se reutiliza
-tal cual, sin copiar código, son las piezas realmente genéricas:
-`src.db.query_runner.run_query`, `src.query.models.CompiledFilter`,
-`src.query.sql_builder.compose_filtered_sql`.
+El núcleo vive en `src.export.engine.extractor.extract_via_sql` desde
+Sprint 9.6 (antes: DUPLICATED_FROM_DRILLS, forma casi idéntica a
+`drills/extractor.py`). Este fichero es un wrapper delgado que aporta el
+`SourceSpec` de Bypass, su propio `run_query` importado a nivel de módulo
+(mismo motivo que en `drills/extractor.py`: preservar
+`monkeypatch.setattr(bypass.extractor, "run_query", fake)`), y
+`sort_column="FechaCreacion"`.
 
-Nota de diseño (modo `sample`): igual que Drills, el SQL de origen
-(`SQLQuery-dataset_BES.sql`) NO tiene `ORDER BY` -- a diferencia de
-Drills, que sí lo tenía (`FechaCreacion asc`). Sin un orden determinista
-en la propia SQL, un `.head(limit)` puro no sería reproducible entre
-ejecuciones. Se añade una ordenación en pandas, DESPUÉS de traer los
-datos (nunca se modifica el fichero .sql en disco) -- por
-`FechaCreacion`, la misma columna que Drills usa para su propio orden,
-ya seleccionada por esta consulta.
+Nota de diseño (modo `sample`): a diferencia de Drills, el SQL de origen
+(`SQLQuery-dataset_BES.sql`) NO tiene `ORDER BY` -- sin un orden
+determinista en la propia SQL, un `.head(limit)` puro no sería reproducible
+entre ejecuciones. El extractor genérico ordena en pandas, DESPUÉS de traer
+los datos (nunca se modifica el fichero `.sql` en disco), por
+`FechaCreacion`, la misma columna que Drills usa para su propio orden.
 """
 from __future__ import annotations
 
-import hashlib
-from dataclasses import dataclass, field
 from typing import Sequence
 
-import pandas as pd
-
 from src.db.query_runner import run_query
+from src.export.engine.extractor import (
+    DEFAULT_SAMPLE_LIMIT,
+    MODE_FULL,
+    MODE_SAMPLE,
+    ExtractionResult,
+    extract_via_sql,
+)
 from src.query.models import CompiledFilter
-from src.query.sql_builder import ComposedQuery, compose_filtered_sql
 
 from .config import BypassExportConfig
 
-MODE_SAMPLE = "sample"
-MODE_FULL = "full"
-DEFAULT_SAMPLE_LIMIT = 100
+__all__ = [
+    "MODE_SAMPLE", "MODE_FULL", "DEFAULT_SAMPLE_LIMIT", "ExtractionResult", "extract_bypass",
+]
 
 _DETERMINISTIC_SORT_COLUMN = "FechaCreacion"
-
-
-@dataclass(frozen=True)
-class ExtractionResult:
-    dataframe: pd.DataFrame
-    mode: str
-    limit: int | None
-    rows_available_before_truncation: int
-    sql_text: str
-    sql_sha256: str
-    connection_name: str
-    source_file: str
-    compiled_filters: tuple[CompiledFilter, ...] = field(default_factory=tuple)
-    composed_sql_text: str | None = None
-
-
-def _sql_hash(sql_text: str) -> str:
-    return hashlib.sha256(sql_text.encode("utf-8")).hexdigest()
 
 
 def extract_bypass(
@@ -68,45 +50,7 @@ def extract_bypass(
     Sin `compiled_filters`, comportamiento idéntico a leer y ejecutar
     `sql_text` tal cual -- sin ningún `WHERE` añadido, mismo contrato que
     `extract_drills`."""
-    if mode not in (MODE_SAMPLE, MODE_FULL):
-        raise ValueError(f"Modo de extracción no soportado: {mode!r} (usar 'sample' o 'full')")
-    if mode == MODE_SAMPLE and limit <= 0:
-        raise ValueError(f"El límite de 'sample' debe ser positivo, se recibió {limit}")
-
-    sql_text = config.source.sql_path.read_text(encoding="utf-8-sig")
-    sql_hash = _sql_hash(sql_text)
-
-    compiled_filters = tuple(compiled_filters or ())
-    composed: ComposedQuery | None = None
-    if compiled_filters:
-        composed = compose_filtered_sql(sql_text, compiled_filters)
-
-    df_full = run_query(
-        composed.sql_text if composed else sql_text,
-        connection=config.source.connection,
-        params=composed.parameters if composed else None,
-        source_file=str(config.source.sql_path),
-    )
-    rows_available = len(df_full)
-
-    if mode == MODE_SAMPLE:
-        if _DETERMINISTIC_SORT_COLUMN in df_full.columns:
-            df_full = df_full.sort_values(_DETERMINISTIC_SORT_COLUMN, kind="stable").reset_index(drop=True)
-        df = df_full.head(limit).reset_index(drop=True)
-        effective_limit = limit
-    else:
-        df = df_full
-        effective_limit = None
-
-    return ExtractionResult(
-        dataframe=df,
-        mode=mode,
-        limit=effective_limit,
-        rows_available_before_truncation=rows_available,
-        sql_text=sql_text,
-        sql_sha256=sql_hash,
-        connection_name=config.source.connection,
-        source_file=str(config.source.sql_path),
-        compiled_filters=compiled_filters,
-        composed_sql_text=composed.sql_text if composed else None,
+    return extract_via_sql(
+        config.source, query_runner=run_query, mode=mode, limit=limit,
+        compiled_filters=compiled_filters, sort_column=_DETERMINISTIC_SORT_COLUMN,
     )

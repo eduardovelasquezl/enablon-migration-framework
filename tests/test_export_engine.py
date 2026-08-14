@@ -559,6 +559,81 @@ def test_resolve_workflow_status_sin_default_en_ningun_caso():
     assert resolve_workflow_status("Cancelado", lookup).status == "unresolved"
 
 
+# --- Micro-sprint 9.10.1: regresion del bug de normalizacion de clave ------
+# resolve_workflow_status usaba `str(estado).strip()` en vez de
+# `normalize_lookup_key(estado)` -- una columna SQL nullable que pandas sube
+# a float64 (IDNivel/IDLetra de Safety Meetings) llegaba como 256.0, cuyo
+# str() es "256.0", que nunca coincidia con la clave "256" del lookup. Los
+# 12 codigos reales del sample (execution_id=f3647fbc455c) resolvian 0/12 --
+# ver Informe-Micro-Sprint-9.10-Level-Letter-StartDate-RootCause-EMF.md.
+
+def test_resolve_workflow_status_clave_int_resuelve():
+    lookup = {"256": "valid_value"}
+    result = resolve_workflow_status(256, lookup)
+    assert result.status == "resolved"
+    assert result.value == "valid_value"
+
+
+def test_resolve_workflow_status_clave_float_integral_resuelve_contra_key_string():
+    # Reproduce exactamente el tipo que pandas produce para una columna SQL
+    # nullable con NULLs en otras filas (int64 no admite NaN -> upcast a
+    # float64) -- este es el caso real que fallaba antes del fix.
+    lookup = {"256": "valid_value"}
+    result = resolve_workflow_status(256.0, lookup)
+    assert result.status == "resolved"
+    assert result.value == "valid_value"
+
+
+def test_resolve_workflow_status_clave_string_con_decimal_artificial_resuelve():
+    lookup = {"256": "valid_value"}
+    result = resolve_workflow_status("256.0", lookup)
+    assert result.status == "resolved"
+    assert result.value == "valid_value"
+
+
+def test_resolve_workflow_status_clave_string_plana_sigue_resolviendo():
+    lookup = {"256": "valid_value"}
+    result = resolve_workflow_status("256", lookup)
+    assert result.status == "resolved"
+    assert result.value == "valid_value"
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), pd.NA])
+def test_resolve_workflow_status_ausencia_mantiene_comportamiento_previo(value):
+    # None/NaN/pd.NA deben seguir "unresolved" -- is_missing() los intercepta
+    # ANTES de llegar a normalize_lookup_key, el fix no cambia esta rama.
+    lookup = {"256": "valid_value"}
+    result = resolve_workflow_status(value, lookup)
+    assert result.status == "unresolved"
+    assert result.value is None
+
+
+def test_resolve_workflow_status_codigos_de_texto_de_drills_sin_cambios():
+    # Guarda de no-regresion: el unico uso real de resolve_workflow_status en
+    # Drills es sobre 'Estado' (texto, nunca numerico) -- normalize_lookup_key
+    # debe dejarlos pasar identico a como los dejaba str(estado).strip().
+    lookup = {
+        "Terminado": "Validated",
+        "En Curso": "Pending validation",
+        "Iniciado": "Draft",
+        "Aprobado": "Validated",
+    }
+    assert resolve_workflow_status("Terminado", lookup).value == "Validated"
+    assert resolve_workflow_status("En Curso", lookup).value == "Pending validation"
+    assert resolve_workflow_status("Iniciado", lookup).value == "Draft"
+    assert resolve_workflow_status("Aprobado", lookup).value == "Validated"
+    assert resolve_workflow_status("Cancelado", lookup).status == "unresolved"
+
+
+def test_resolve_letter_no_cambia_comportamiento_bypass_sigue_intacto():
+    # resolve_letter ya normalizaba correctamente antes de este fix (no se
+    # toco) -- confirma que Bypass no se ve afectado por el cambio en su
+    # funcion hermana.
+    lookup = {"258": "A"}
+    assert resolve_letter(258.0, lookup, "NOLETTER-WRONG").status == "resolved"
+    assert resolve_letter(258.0, lookup, "NOLETTER-WRONG").value == "A"
+
+
 def test_normalize_lookup_key_recorta_decimal_artificial():
     assert normalize_lookup_key(258.0) == "258"
     assert normalize_lookup_key("258.0") == "258"

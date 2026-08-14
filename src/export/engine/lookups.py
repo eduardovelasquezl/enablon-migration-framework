@@ -75,10 +75,21 @@ def resolve_letter(id_letra, letter_lookup: dict, null_default: str) -> LookupRe
 def resolve_workflow_status(estado, workflow_status_lookup: dict) -> LookupResult:
     """`estado` -> valor destino, SIN default para ausencia/no-coincidencia
     en ningún caso -- nunca se inventa uno: se reporta `unresolved` y se
-    conserva el valor origen para auditoría."""
+    conserva el valor origen para auditoría.
+
+    `key` se normaliza con `normalize_lookup_key` (Micro-sprint 9.10.1) --
+    antes usaba `str(estado).strip()` a secas, que nunca coincidía cuando
+    `estado` llegaba como float íntegro (`256.0`, típico de una columna SQL
+    nullable que pandas sube a `float64`): `resolve_letter`, en este mismo
+    fichero, ya normalizaba así; esta función no, y era el único de los dos
+    lookups reutilizado por los 3 campos numéricos de Safety Meetings
+    (`CS_Level`/`CS_Letter`) -- ver Informe-Micro-Sprint-9.10-Level-Letter-
+    StartDate-RootCause-EMF.md para la evidencia completa. Los códigos de
+    texto de Drills (`"Terminado"`, `"En Curso"`...) no cambian de
+    comportamiento: `normalize_lookup_key` los deja pasar tal cual."""
     if is_missing(estado):
         return LookupResult(value=None, status="unresolved", raw_source_value=estado)
-    key = str(estado).strip()
+    key = normalize_lookup_key(estado)
     if key in workflow_status_lookup:
         return LookupResult(value=workflow_status_lookup[key], status="resolved", raw_source_value=estado)
     return LookupResult(value=None, status="unresolved", raw_source_value=estado)

@@ -219,6 +219,76 @@ def test_pipeline_lugar_y_asistentes_vacios_no_bloquean(tmp_path):
     assert second_row[atendee_idx] == ""
 
 
+def _fake_dataframe_con_nulos_para_forzar_float64() -> pd.DataFrame:
+    """Reproduce el tipo real que pandas produce para `IDNivel`/`IDLetra` en
+    el sample real (`execution_id=f3647fbc455c`, Sprint 9.9): una columna SQL
+    nullable con al menos una fila `NULL` fuerza el upcast de TODA la columna
+    a `float64` -- incluso los valores "presentes" llegan como `256.0`, no
+    `256`. Es exactamente el patrón que exponía el bug de Micro-sprint 9.10
+    antes del fix de 9.10.1 (`resolve_workflow_status` sin normalizar la
+    clave). Códigos reales del ETL de `config/exports/safety_meetings.yaml`
+    (catálogo de mapeo versionado, no dato de cliente) -- mismos códigos que
+    `_fake_dataframe()` ya usa en este fichero."""
+    return pd.DataFrame({
+        "IDReunionGrupo": [5303, 5305, 5310, 5399],
+        "IDCentro": [4, 4, 4, 4],
+        "IDUnidadOrg": [278, 278, 278, 278],
+        "FaseActual": [4, 2, 1, 1],
+        "IDNivel": [256, 257, 371, None],   # el None fuerza float64 en toda la columna
+        "IDLetra": [258, 259, 373, None],
+        "Fecha": ["18/06/2018 09:59:00", "22/06/2018 13:15:00", "27/06/2018 08:14:00", "01/07/2018 10:00:00"],
+        "Lugar": ["Sala San Roque", "Sala X", "Sala Algeciras", None],
+        "Asistentes": ["Juan, Maria", "Pedro", "Ana", None],
+        "FechaCreacion": ["2018-06-18", "2018-06-22", "2018-06-27", "2018-07-01"],
+    })
+
+
+def test_pipeline_level_letter_resuelven_con_columna_float64_micro_sprint_9_10_1(tmp_path):
+    """Regresión Micro-sprint 9.10.1: antes del fix, `IDNivel`/`IDLetra`
+    llegando como `float64` (por el NULL de una fila `Scheduled`) hacía que
+    NINGÚN código resolviera -- 0/12 en el sample real. Verifica que las 3
+    filas con código real ahora resuelven, la fila `EXPECTED_NULL` sigue
+    vacía sin inventar default, y confirma explícitamente el dtype `float64`
+    (para que el test no pase trivialmente con `int64`, que nunca reprodujo
+    el bug)."""
+    from src.export.prototype.safety_meetings.extractor import ExtractionResult
+
+    df = _fake_dataframe_con_nulos_para_forzar_float64()
+    assert df["IDNivel"].dtype == "float64"
+    assert df["IDLetra"].dtype == "float64"
+
+    extraction = ExtractionResult(
+        dataframe=df, mode="sample", limit=4, rows_available_before_truncation=4,
+        sql_text="SELECT 1", sql_sha256="abc123", connection_name="prevencion",
+        source_file="fake.sql",
+    )
+    result = pipeline_mod.run(
+        mode="sample", limit=4, output_root=tmp_path, extraction=extraction,
+        run_id="test_level_letter_float64", timestamp="20260101T000004Z",
+    )
+    rows = result.csv_path.read_text(encoding="utf-8-sig").splitlines()[1:]
+    parsed = [r.split("\t") for r in rows]
+    level_idx = pipeline_mod.OUTPUT_COLUMNS.index("CS_Level")
+    letter_idx = pipeline_mod.OUTPUT_COLUMNS.index("CS_Letter")
+
+    # Filas 1-3: código real presente en level_lookup/letter_lookup -> deben
+    # resolver (antes del fix, las 3 quedaban vacías igual que la 4a).
+    assert parsed[0][level_idx] == "1" and parsed[0][letter_idx] == "1"   # 256->1, 258->1
+    assert parsed[1][level_idx] == "2" and parsed[1][letter_idx] == "2"   # 257->2, 259->2
+    assert parsed[2][level_idx] == "3" and parsed[2][letter_idx] == "3"   # 371->3, 373->3
+
+    # Fila 4 (EXPECTED_NULL, IDNivel/IDLetra ausentes): sigue vacía -- nunca
+    # se inventa un default.
+    assert parsed[3][level_idx] == ""
+    assert parsed[3][letter_idx] == ""
+
+    report = yaml.safe_load(result.validation_report_path.read_text(encoding="utf-8"))
+    # Solo la fila EXPECTED_NULL genera "unresolved" (Level + Letter) -- las
+    # otras 3 filas ahora resuelven, a diferencia de antes del fix.
+    assert report["lookups"]["unresolved"] == 2
+    assert report["status"]["result"] == "SUCCESS_WITH_WARNINGS"
+
+
 # --------------------------------------------------------------------------
 # 9. Readiness funciona (offline, workspace de ejemplo sintético)
 # --------------------------------------------------------------------------

@@ -219,6 +219,38 @@ def test_pipeline_lugar_y_asistentes_vacios_no_bloquean(tmp_path):
     assert second_row[atendee_idx] == ""
 
 
+def test_pipeline_startdate_combina_fecha_y_hora_micro_sprint_9_10_3(tmp_path):
+    """Regla VERIFIED (Micro-sprint 9.10.2/9.10.3): StartDate = Fecha (fecha)
+    + Hora (hora:minuto) -- confirma que el pipeline pasa 'Hora' a
+    resolve_start_date (antes de este fix, la columna se leía del DataFrame
+    pero nunca se usaba). Datos sintéticos, sin cliente real."""
+    from src.export.prototype.safety_meetings.extractor import ExtractionResult
+
+    df = _fake_dataframe()
+    # Fecha con hora forzada a medianoche -- refleja el caso real (SM2025.sql
+    # ya trae 'Fecha' formateada por SQL con hora 00:00:00, la hora real vive
+    # solo en 'Hora') -- así la prueba demuestra que 'Hora' SUSTITUYE el
+    # componente hora, no que coincide por casualidad con el de Fecha.
+    df["Fecha"] = ["18/06/2018 00:00:00", "22/06/2018 00:00:00", "27/06/2018 00:00:00"]
+    df["Hora"] = ["09:59", None, "8:14"]  # fila 2 sin Hora -> conserva solo fecha
+    extraction = ExtractionResult(
+        dataframe=df, mode="sample", limit=3, rows_available_before_truncation=3,
+        sql_text="SELECT 1", sql_sha256="abc123", connection_name="prevencion",
+        source_file="fake.sql",
+    )
+    result = pipeline_mod.run(
+        mode="sample", limit=3, output_root=tmp_path, extraction=extraction,
+        run_id="test_startdate_fecha_hora", timestamp="20260101T000005Z",
+    )
+    rows = result.csv_path.read_text(encoding="utf-8-sig").splitlines()[1:]
+    parsed = [r.split("\t") for r in rows]
+    start_date_idx = pipeline_mod.OUTPUT_COLUMNS.index("StartDate")
+
+    assert parsed[0][start_date_idx] == "18/06/2018 09:59:00"  # Hora='09:59' combinada
+    assert parsed[1][start_date_idx] == "22/06/2018 00:00:00"  # Hora=None -> solo fecha, sin inventar hora
+    assert parsed[2][start_date_idx] == "27/06/2018 08:14:00"  # Hora='8:14' combinada
+
+
 def _fake_dataframe_con_nulos_para_forzar_float64() -> pd.DataFrame:
     """Reproduce el tipo real que pandas produce para `IDNivel`/`IDLetra` en
     el sample real (`execution_id=f3647fbc455c`, Sprint 9.9): una columna SQL

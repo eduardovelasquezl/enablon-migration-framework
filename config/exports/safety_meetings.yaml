@@ -142,23 +142,42 @@ fields:
     validation: "warn_if_unresolved"
     evidence_id: "etl:safety_meetings.mapeo_letra"
 
-  - source: "Fecha"
+  - source: ["Fecha", "Hora"]  # Micro-sprint 9.10.3: Hora combina hora:minuto -- ver transformations.py::resolve_start_date
     target: "StartDate"
     required: false
-    transformation: "passthrough_or_empty"
+    transformation: "resolve_start_date"
     data_type: "string"
-    date_format: null
+    date_format: "dd/MM/yyyy HH:mm:ss"
     default: null
     mapping: null
     validation: "passthrough_no_validation"
-    evidence_id: "sql:safety_meetings.sm2025.fecha"
-    # HALLAZGO (no se inventa una combinación): la hoja MAP-SM referencia un
-    # campo origen 'FechaHora' que NO existe en la SQL real (solo existen
-    # 'Fecha' y 'Hora' por separado). 'Fecha' ya viene formateada como
-    # datetime completo por la propia SQL (FORMAT(...,'dd/MM/yyyy
-    # HH:mm:ss')) -- se usa tal cual. 'Hora' queda sin usar en este
-    # incremento (STRONGLY_EVIDENCED, no VERIFIED -- ver
-    # safety-meetings-module.md § 1.4).
+    evidence_id: "etl:safety_meetings.itp_sm_dbc.fecha_hora_combinado"
+    # HALLAZGO ORIGINAL (Sprint 9.7/9.9, ya no vigente): la hoja MAP-SM
+    # referencia un campo origen 'FechaHora' que NO existe en SM2025.sql
+    # (solo existen 'Fecha' y 'Hora' por separado) -- se usaba solo 'Fecha'
+    # (formateada con hora 00:00:00 por la propia SQL), 'Hora' quedaba sin
+    # usar (STRONGLY_EVIDENCED, no VERIFIED -- safety-meetings-module.md § 1.4).
+    #
+    # RESUELTO (Micro-sprint 9.10.2/9.10.3): la hoja ITP-SM-DBC del mismo
+    # libro (10.782 filas históricas reales) trae Fecha/Hora/FechaHora
+    # JUNTAS -- confirma la regla StartDate = Fecha (fecha) + Hora
+    # (hora:minuto) en 10778/10778 filas donde FechaHora existe (100%,
+    # cero discrepancias). Las 4 filas con Hora corrupta ('10:', '12:',
+    # '7:000', '14:') son exactamente las mismas donde el propio ETL dejó
+    # FechaHora vacío. VERIFIED -- ver
+    # Informe-Micro-Sprint-9.10.2-StartDate-RootCause-EMF.md.
+    #
+    # Implementación: reutiliza parse_hora/parse_starting_date de
+    # drills.transformations (Sprint 9.3, dff14f2) -- verificado que
+    # reproducen exactamente el mismo resultado sobre las 10.782 filas de
+    # ITP-SM-DBC (parse_starting_date(Fecha, Hora) == FechaHora real en
+    # 10782/10782 casos, incluyendo el mismo criterio de rechazo para las 4
+    # filas corruptas). TRANSITIONAL_CROSS_MODULE_DEPENDENCY: es solo la 2ª
+    # confirmación real de estas funciones (Drills, ahora Safety Meetings)
+    # -- no se mueven todavía a src.export.engine (Sprint 9.8 exige una 3ª
+    # confirmación real antes de generalizar). format_starting_date NO se
+    # reutiliza (no soporta segundos, 'ss') -- el formateo final usa
+    # strftime directo, ver transformations.py::resolve_start_date.
 
   - source: "Lugar"
     target: "CS_MeetingPlace"

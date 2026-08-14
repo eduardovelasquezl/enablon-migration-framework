@@ -521,16 +521,38 @@ def test_bypass_ya_no_importa_directamente_de_drills():
         assert not offending, f"{path.name} todavía importa de drills: {offending}"
 
 
+_SAFETY_MEETINGS_DRILLS_WHITELIST = {"parse_hora", "parse_starting_date"}
+
+
 def test_safety_meetings_ya_no_importa_directamente_de_drills():
     """Mismo criterio que Bypass: hasta Sprint 9.8, `safety_meetings/pipeline.py`
     importaba `exporter.write_csv` y `safety_meetings/transformations.py`
     importaba `resolve_workflow_status`/`to_historical_id` de
     `drills/transformations.py` -- movidas al Engine en Sprint 9.8. Ningún
-    fichero de `safety_meetings/` debe importar de `drills/`."""
+    fichero de `safety_meetings/` debe importar de `drills/`...
+
+    EXCEPCIÓN deliberada (Micro-sprint 9.10.3, ver
+    `_SAFETY_MEETINGS_DRILLS_WHITELIST`): `transformations.py` importa
+    `parse_hora`/`parse_starting_date` de `drills.transformations` --
+    TRANSITIONAL_CROSS_MODULE_DEPENDENCY documentada (regla StartDate =
+    Fecha + Hora, VERIFIED contra `ITP-SM-DBC`, solo la 2ª confirmación
+    real, todavía no cruza el umbral de 3ª necesidad que Sprint 9.8 exigió
+    para mover código al Engine -- ver
+    Informe-Micro-Sprint-9.10.2-StartDate-RootCause-EMF.md). El guard
+    sigue bloqueando CUALQUIER otro import de `drills/` -- solo esos dos
+    nombres, solo desde `transformations.py`, están permitidos."""
     for path in (PROJECT_ROOT / "src/export/prototype/safety_meetings").glob("*.py"):
-        imported = _imported_module_names(path)
-        offending = {m for m in imported if m.startswith("src.export.prototype.drills")}
-        assert not offending, f"{path.name} todavía importa de drills: {offending}"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("src.export.prototype.drills"):
+                imported_names = {alias.name for alias in node.names}
+                if path.name == "transformations.py" and imported_names <= _SAFETY_MEETINGS_DRILLS_WHITELIST:
+                    continue
+                offending = imported_names - _SAFETY_MEETINGS_DRILLS_WHITELIST if path.name == "transformations.py" else imported_names
+                assert not offending, f"{path.name} todavía importa de drills sin autorización: {offending}"
+            elif isinstance(node, ast.Import):
+                offending = {alias.name for alias in node.names if alias.name.startswith("src.export.prototype.drills")}
+                assert not offending, f"{path.name} todavía importa de drills: {offending}"
 
 
 # ---------------------------------------------------------------------------

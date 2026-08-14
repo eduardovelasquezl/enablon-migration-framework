@@ -89,7 +89,7 @@ def _transform_rows(
         workflow_status = tr.resolve_lookup(row.get("FaseActual"), workflow_status_lookup)
         level = tr.resolve_lookup(row.get("IDNivel"), level_lookup)
         letter = tr.resolve_lookup(row.get("IDLetra"), letter_lookup)
-        start_date = tr.passthrough_or_empty(row.get("Fecha"))
+        start_date = tr.resolve_start_date(row.get("Fecha"), row.get("Hora"))
         meeting_place = tr.passthrough_or_empty(row.get("Lugar"))
         atendee = tr.passthrough_or_empty(row.get("Asistentes"))
 
